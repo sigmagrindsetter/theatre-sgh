@@ -1,0 +1,12 @@
+{
+  "name": "theatre-sgh",
+  "version": "1.0.0",
+  "description": "Theatre management control panel",
+  "private": true,
+  "scripts": {
+    "recruitment": "python apps/recruitment/sync.py"
+  },
+  "keywords": ["automation", "notion", "google-sheets", "python"],
+  "author": "",
+  "license": "ISC"
+}
