@@ -70,6 +70,12 @@ def get_members_data(client):
         pid = person_list[0]["id"]
 
         data = {}
+
+        # Real name from "Imię i Nazwisko" column (not Notion account name)
+        name_prop = props.get("Imię i Nazwisko", {}).get("title", [])
+        if name_prop:
+            data["_full_name"] = name_prop[0]["plain_text"].strip()
+
         for col in SIZE_COLUMNS:
             val = props.get(col, {}).get("number")
             if val is not None:
@@ -209,8 +215,9 @@ def sync():
     errors = 0
     active_filenames = set()
 
-    for pid, name in cast_people.items():
+    for pid, account_name in cast_people.items():
         member = members_data.get(pid, {})
+        name = member.get("_full_name", account_name)
         photo_url = None
 
         source_photo = member.get("_photo_url")
