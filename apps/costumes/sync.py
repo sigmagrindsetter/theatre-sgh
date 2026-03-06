@@ -6,19 +6,19 @@ Reads people from Obsady (cast assignments), looks up their measurements
 and silhouette photo from Members DB, and syncs to the Aktorzy target DB.
 All joined on Notion Person ID.
 
-Photos are temporarily uploaded to Google Drive to get a public URL,
-then written to Notion, then deleted from Drive.
+Photos are uploaded to Google Drive (teatr.sgh@gmail.com) with a direct-view
+URL so they render as images in the Notion table. Photos persist on Drive;
+old versions are replaced on each sync.
 """
 
 import sys
-import time
 import httpx
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from shared.auth import NotionAuth, GoogleAuth
+from shared.auth import NotionAuth
 from config import (
     OBSADY_DATABASE_ID,
     MEMBERS_DATABASE_ID,
@@ -102,7 +102,7 @@ def get_existing_aktorzy(client):
     return existing
 
 
-# --- Google Drive helpers for temporary photo hosting ---
+# --- Google Drive helpers for persistent photo hosting ---
 
 def get_drive_service():
     """Get Drive service using teatr.sgh OAuth credentials (has storage quota)."""
@@ -110,7 +110,6 @@ def get_drive_service():
     from googleapiclient.discovery import build
     from google.oauth2.credentials import Credentials
 
-    # gcloud's OAuth client ID/secret (public, used by all gcloud installations)
     creds = Credentials(
         token=None,
         refresh_token=os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN"),
@@ -121,8 +120,26 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
+def get_existing_drive_photos(drive, folder_id):
+    """Get existing photos in Drive folder. Returns {filename: file_id}."""
+    existing = {}
+    page_token = None
+    while True:
+        resp = drive.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            fields="nextPageToken, files(id, name)",
+            pageToken=page_token,
+        ).execute()
+        for f in resp.get("files", []):
+            existing[f["name"]] = f["id"]
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    return existing
+
+
 def upload_photo_to_drive(drive, folder_id, image_bytes, filename):
-    """Upload image bytes to Drive, make public, return direct URL and file ID."""
+    """Upload image to Drive, make public, return direct-view URL."""
     from googleapiclient.http import MediaInMemoryUpload
 
     media = MediaInMemoryUpload(image_bytes, mimetype="image/jpeg", resumable=False)
@@ -130,14 +147,13 @@ def upload_photo_to_drive(drive, folder_id, image_bytes, filename):
     uploaded = drive.files().create(body=file_meta, media_body=media, fields="id").execute()
     file_id = uploaded["id"]
 
-    # Make publicly readable
     drive.permissions().create(
         fileId=file_id,
         body={"type": "anyone", "role": "reader"},
     ).execute()
 
-    public_url = f"https://drive.google.com/uc?id={file_id}&export=download"
-    return file_id, public_url
+    # Direct thumbnail URL that renders as an image in Notion
+    return file_id, f"https://lh3.googleusercontent.com/d/{file_id}"
 
 
 def delete_drive_file(drive, file_id):
@@ -183,74 +199,77 @@ def sync():
     members_data = get_members_data(notion)
     existing = get_existing_aktorzy(notion)
 
-    # Set up Drive for photo transfers
     drive = get_drive_service()
     folder_id = DRIVE_TEMP_FOLDER_ID
-    temp_file_ids = []  # Track uploaded files for cleanup
+    drive_photos = get_existing_drive_photos(drive, folder_id)
+    print(f"Found {len(drive_photos)} existing photos on Drive")
 
     created = 0
     updated = 0
     errors = 0
+    active_filenames = set()
 
-    try:
-        for pid, name in cast_people.items():
-            member = members_data.get(pid, {})
-            photo_url = None
+    for pid, name in cast_people.items():
+        member = members_data.get(pid, {})
+        photo_url = None
 
-            # Transfer photo via Drive if available
-            source_photo = member.get("_photo_url")
-            if source_photo:
-                try:
-                    image_bytes = download_image(source_photo)
-                    photo_name = member.get("_photo_name", "photo.jpg")
-                    file_id, photo_url = upload_photo_to_drive(
-                        drive, folder_id, image_bytes, f"{name}_{photo_name}"
-                    )
-                    temp_file_ids.append(file_id)
-                except Exception as e:
-                    print(f"  Photo transfer failed for {name}: {e}")
-
-            props = build_properties(pid, name, member, photo_url)
+        source_photo = member.get("_photo_url")
+        if source_photo:
+            photo_name = member.get("_photo_name", "photo.jpg")
+            drive_filename = f"{pid}_{photo_name}"
+            active_filenames.add(drive_filename)
 
             try:
-                if pid in existing:
-                    notion.pages.update(page_id=existing[pid], properties=props)
-                    print(f"  Updated: {name}")
-                    updated += 1
-                else:
-                    notion.pages.create(
-                        parent={"database_id": AKTORZY_DATABASE_ID},
-                        properties=props,
-                    )
-                    print(f"  Created: {name}")
-                    created += 1
+                # Delete old version if exists (photo may have changed)
+                if drive_filename in drive_photos:
+                    delete_drive_file(drive, drive_photos[drive_filename])
+
+                image_bytes = download_image(source_photo)
+                file_id, photo_url = upload_photo_to_drive(
+                    drive, folder_id, image_bytes, drive_filename
+                )
             except Exception as e:
-                print(f"  Failed: {name}: {e}")
+                print(f"  Photo transfer failed for {name}: {e}")
+
+        props = build_properties(pid, name, member, photo_url)
+
+        try:
+            if pid in existing:
+                notion.pages.update(page_id=existing[pid], properties=props)
+                print(f"  Updated: {name}")
+                updated += 1
+            else:
+                notion.pages.create(
+                    parent={"database_id": AKTORZY_DATABASE_ID},
+                    properties=props,
+                )
+                print(f"  Created: {name}")
+                created += 1
+        except Exception as e:
+            print(f"  Failed: {name}: {e}")
+            errors += 1
+
+    # Remove people no longer in cast
+    removed = 0
+    for pid, page_id in existing.items():
+        if pid not in cast_people:
+            try:
+                notion.pages.update(page_id=page_id, archived=True)
+                print(f"  Archived: {pid}")
+                removed += 1
+            except Exception as e:
+                print(f"  Failed to archive {pid}: {e}")
                 errors += 1
 
-        # Remove people no longer in cast
-        removed = 0
-        for pid, page_id in existing.items():
-            if pid not in cast_people:
-                try:
-                    notion.pages.update(page_id=page_id, archived=True)
-                    print(f"  Archived: {pid}")
-                    removed += 1
-                except Exception as e:
-                    print(f"  Failed to archive {pid}: {e}")
-                    errors += 1
-
-    finally:
-        # Clean up: delete all temporary photos from Drive
-        if temp_file_ids:
-            print(f"\nCleaning up {len(temp_file_ids)} temporary Drive files...")
-            # Wait a bit so Notion can cache the images
-            time.sleep(5)
-            for file_id in temp_file_ids:
-                try:
-                    delete_drive_file(drive, file_id)
-                except Exception:
-                    pass
+    # Clean up orphaned Drive photos (people removed from cast)
+    orphaned = set(drive_photos.keys()) - active_filenames
+    for filename in orphaned:
+        try:
+            delete_drive_file(drive, drive_photos[filename])
+        except Exception:
+            pass
+    if orphaned:
+        print(f"Cleaned up {len(orphaned)} orphaned Drive photos")
 
     print(f"\nSync complete: {created} created, {updated} updated, {removed} archived, {errors} errors")
     return errors == 0
