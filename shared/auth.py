@@ -38,11 +38,11 @@ class GoogleAuth:
             # Create credentials from environment
             creds_info = {
                 "type": "service_account",
-                "project_id": "theatre-sgh",
-                "private_key_id": "29ef31c6d76f0e79565639ea4e79fcce50807ff2",
+                "project_id": os.getenv('GOOGLE_PROJECT_ID', 'theatre-sgh'),
+                "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID', ''),
                 "private_key": private_key,
                 "client_email": client_email,
-                "client_id": "118265202546856213237",
+                "client_id": os.getenv('GOOGLE_CLIENT_ID', ''),
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
                 "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",

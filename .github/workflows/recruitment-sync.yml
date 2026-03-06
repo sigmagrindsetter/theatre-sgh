@@ -22,8 +22,10 @@ jobs:
 
       - name: Run recruitment sync
         env:
-          # Only secrets - IDs are in code
           NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
           GOOGLE_CLIENT_EMAIL: ${{ secrets.GOOGLE_CLIENT_EMAIL }}
           GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+          GOOGLE_PRIVATE_KEY_ID: ${{ secrets.GOOGLE_PRIVATE_KEY_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_PROJECT_ID: ${{ secrets.GOOGLE_PROJECT_ID }}
         run: python apps/recruitment/sync.py
