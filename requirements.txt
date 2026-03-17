@@ -5,3 +5,4 @@ google-api-python-client==2.114.0
 gspread==6.0.0
 notion-client==2.2.1
 python-dotenv==1.0.1
+reportlab==4.1.0

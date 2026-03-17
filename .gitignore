@@ -15,6 +15,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Sync cache (persisted via GH Actions cache)
+.last_sync
+
 # IDE
 .vscode/
 .idea/

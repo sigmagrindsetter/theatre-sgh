@@ -19,6 +19,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from shared.auth import NotionAuth
+from shared.change_check import check_databases_changed, set_cached_time
 from config import (
     OBSADY_DATABASE_ID,
     MEMBERS_DATABASE_ID,
@@ -286,5 +287,21 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Costumes Sync - Obsady → Aktorzy")
     print("=" * 60)
+
+    notion = NotionAuth.get_client()
+    force = "--force" in sys.argv
+    changed, timestamp = check_databases_changed(
+        notion, [OBSADY_DATABASE_ID, MEMBERS_DATABASE_ID], "costumes"
+    )
+
+    if not changed and not force:
+        print(f"No changes since {timestamp}, skipping")
+        sys.exit(0)
+
+    print(f"Changes detected (latest edit: {timestamp})")
     success = sync()
+
+    if success:
+        set_cached_time("costumes", timestamp)
+
     sys.exit(0 if success else 1)
