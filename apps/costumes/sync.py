@@ -46,15 +46,21 @@ def query_all_pages(client, database_id, **kwargs):
 
 
 def get_cast_people(client):
-    """Get unique people from Obsady 'Obsada' column. Returns {person_id: person_name}."""
+    """Get unique people from Obsady cast columns. Returns {person_id: person_name}.
+
+    Reads all people-type columns (e.g. 'Obsada Wtoopa', 'Obsada SWT', etc.)
+    so the sync adapts when cast columns are added/renamed per show.
+    """
     pages = query_all_pages(client, OBSADY_DATABASE_ID)
     people = {}
     for page in pages:
-        for person in page["properties"].get("Obsada", {}).get("people", []):
-            pid = person.get("id")
-            name = person.get("name")
-            if pid and name:
-                people[pid] = name.strip()
+        for prop_name, prop_value in page["properties"].items():
+            if prop_value.get("type") == "people":
+                for person in prop_value.get("people", []):
+                    pid = person.get("id")
+                    name = person.get("name")
+                    if pid and name:
+                        people[pid] = name.strip()
     print(f"Found {len(people)} unique people in Obsady")
     return people
 
@@ -257,10 +263,13 @@ def sync():
             print(f"  Failed: {name}: {e}")
             errors += 1
 
-    # Remove people no longer in cast
+    # Remove people no longer in cast (with safety check)
     removed = 0
-    for pid, page_id in existing.items():
-        if pid not in cast_people:
+    to_remove = {pid: page_id for pid, page_id in existing.items() if pid not in cast_people}
+    if to_remove and not cast_people:
+        print("SAFETY: refusing to archive all rows — source returned 0 people")
+    else:
+        for pid, page_id in to_remove.items():
             try:
                 notion.pages.update(page_id=page_id, archived=True)
                 print(f"  Archived: {pid}")

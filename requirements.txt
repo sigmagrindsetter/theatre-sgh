@@ -6,3 +6,5 @@ gspread==6.0.0
 notion-client==2.2.1
 python-dotenv==1.0.1
 reportlab==4.1.0
+pypdf==5.4.0
+pdfrw==0.4
