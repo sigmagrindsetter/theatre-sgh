@@ -711,6 +711,11 @@ def esc(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def esc_verse(text):
+    """Escape text and preserve line breaks for verse formatting."""
+    return esc(text).replace("\n", "<br/>")
+
+
 def _build_title_page(story, styles, role_name, script_type):
     story.append(Spacer(1, 180))
     story.append(Paragraph(esc(role_name.upper()), styles["title"]))
@@ -770,9 +775,9 @@ def generate_actor_pdf(role_name, elements):
             block = [Paragraph(esc(char_name), styles["own_name"])]
             for ptype, ptext in parts:
                 if ptype == "direction":
-                    block.append(Paragraph(esc(ptext), styles["own_dir"]))
+                    block.append(Paragraph(esc_verse(ptext), styles["own_dir"]))
                 else:
-                    block.append(Paragraph(esc(ptext), styles["own_dialogue"]))
+                    block.append(Paragraph(esc_verse(ptext), styles["own_dialogue"]))
             story.append(KeepTogether(block))
 
         elif et == "CUE_SPEECH":
@@ -780,9 +785,9 @@ def generate_actor_pdf(role_name, elements):
             block = [Paragraph(esc(char_name), styles["cue_name"])]
             for ptype, ptext in parts:
                 if ptype == "direction":
-                    block.append(Paragraph(esc(ptext), styles["cue_dir"]))
+                    block.append(Paragraph(esc_verse(ptext), styles["cue_dir"]))
                 else:
-                    block.append(Paragraph(esc(ptext), styles["cue_dialogue"]))
+                    block.append(Paragraph(esc_verse(ptext), styles["cue_dialogue"]))
             if len(block) > 1:
                 story.append(KeepTogether(block))
 
@@ -850,7 +855,7 @@ def generate_technical_pdf(elements):
                 if ptype == "direction":
                     pass  # no stage dirs in technical script
                 else:
-                    block.append(Paragraph(esc(ptext), styles["cue_dialogue"]))
+                    block.append(Paragraph(esc_verse(ptext), styles["cue_dialogue"]))
             if len(block) > 1:
                 story.append(KeepTogether(block))
 
@@ -886,9 +891,9 @@ def generate_general_pdf(elements):
             block = [Paragraph(esc(char_name), styles["own_name"])]
             for ptype, ptext in parts:
                 if ptype == "direction":
-                    block.append(Paragraph(esc(ptext), styles["own_dir"]))
+                    block.append(Paragraph(esc_verse(ptext), styles["own_dir"]))
                 else:
-                    block.append(Paragraph(esc(ptext), styles["own_dialogue"]))
+                    block.append(Paragraph(esc_verse(ptext), styles["own_dialogue"]))
             story.append(KeepTogether(block))
 
     doc.build(story)
