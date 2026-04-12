@@ -337,7 +337,15 @@ def parse_blocks(blocks):
                     if char_name and char_name == char_name.upper() and any(c.isalpha() for c in char_name):
                         elements.append(("SPEECH", char_name, parts))
                     elif text:
-                        elements.append(("STAGE_DIR", text))
+                        # Check if paragraph has non-italic plain text (dialogue)
+                        # vs all-italic (stage direction)
+                        has_dialogue = any(
+                            p[0] == "dialogue" for p in parts
+                        )
+                        if has_dialogue:
+                            elements.append(("CONTINUATION", parts))
+                        else:
+                            elements.append(("STAGE_DIR", text))
 
             if b.get("_children"):
                 _process(b["_children"])
@@ -402,6 +410,58 @@ def build_role_character_map(roles, all_script_characters):
 
 def get_all_script_characters(elements):
     return {e[1] for e in elements if e[0] == "SPEECH"}
+
+
+def assign_continuations(elements, all_chars):
+    """Post-process: attribute CONTINUATION paragraphs to the last speaker.
+
+    A CONTINUATION is a paragraph with non-italic text that follows a SPEECH,
+    possibly separated by non-dialogue elements (MUSIC, CHOREO, STAGE_DIR).
+    If the first dialogue part is a known character name, use it as the speaker.
+    Otherwise, attribute to the last speaker.
+    """
+    result = []
+    last_speaker = None
+
+    for elem in elements:
+        if elem[0] == "SPEECH":
+            last_speaker = elem[1]
+            result.append(elem)
+
+        elif elem[0] == "CONTINUATION":
+            parts = elem[1]
+            speaker = last_speaker
+            new_parts = list(parts)
+
+            # Check if first dialogue part is a character name
+            if new_parts and new_parts[0][0] == "dialogue":
+                first = new_parts[0][1].strip()
+                upper = first.upper()
+                if upper in all_chars:
+                    speaker = upper
+                    new_parts = new_parts[1:]
+                    last_speaker = speaker
+                elif f"PAN {upper}" in all_chars:
+                    speaker = f"PAN {upper}"
+                    new_parts = new_parts[1:]
+                    last_speaker = speaker
+
+            if speaker and new_parts:
+                result.append(("SPEECH", speaker, new_parts))
+            elif speaker:
+                result.append(("SPEECH", speaker, parts))
+            else:
+                # No speaker context — treat as stage direction
+                text = " ".join(t for _, t in parts)
+                result.append(("STAGE_DIR", text))
+
+        elif elem[0] in ("ACT", "SCENE"):
+            last_speaker = None
+            result.append(elem)
+        else:
+            result.append(elem)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -966,6 +1026,9 @@ def sync():
     elements = parse_blocks(blocks)
     print(f"  Parsed {len(elements)} elements")
 
+    all_chars = get_all_script_characters(elements)
+    elements = assign_continuations(elements, all_chars)
+    # Re-count after continuations absorbed
     all_chars = get_all_script_characters(elements)
     print(f"  Found {len(all_chars)} unique characters")
 
