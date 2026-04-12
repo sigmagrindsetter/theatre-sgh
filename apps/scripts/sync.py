@@ -527,11 +527,12 @@ def filter_for_role(elements, char_names, role_name=""):
 
 
 def filter_for_technical(elements):
-    """Technical script: MUSIC + LIGHTING as own cues, dialogue as context.
-    No STAGE_DIR, no CHOREO, no OBSADA.
+    """Technical script: MUSIC + LIGHTING as own cues, CHOREO near cues,
+    dialogue as context. No STAGE_DIR, no OBSADA.
+    Long dialogue gaps between cues are truncated to 2 before + 1 after.
     """
     scenes = _group_by_scene(elements)
-    output = []
+    raw = []
     last_act = None
 
     for act_name, scene_name, scene_elems in scenes:
@@ -540,18 +541,82 @@ def filter_for_technical(elements):
             continue
 
         if act_name and act_name != last_act:
-            output.append(("ACT", act_name))
+            raw.append(("ACT", act_name))
             last_act = act_name
         if scene_name:
-            output.append(("SCENE", scene_name))
+            raw.append(("SCENE", scene_name))
 
         for e in scene_elems:
             if e[0] == "MUSIC":
-                output.append(("OWN_MUSIC", e[1]))
+                raw.append(("OWN_MUSIC", e[1]))
             elif e[0] == "LIGHTING":
-                output.append(("OWN_LIGHTING", e[1]))
+                raw.append(("OWN_LIGHTING", e[1]))
+            elif e[0] == "CHOREO":
+                raw.append(e)
             elif e[0] == "SPEECH":
-                output.append(("CUE_SPEECH", e[1], e[2]))
+                raw.append(("CUE_SPEECH", e[1], e[2]))
+
+    return _truncate_technical_gaps(raw)
+
+
+def _truncate_technical_gaps(elements):
+    """Truncate long stretches of context between cue blocks.
+    Keep 2 blocks before and 1 block after each cue (MUSIC/LIGHTING/CHOREO).
+    Replace everything else with ELLIPSIS.
+    """
+    cue_types = {"OWN_MUSIC", "OWN_LIGHTING", "CHOREO"}
+    structural = {"ACT", "SCENE"}
+    n = len(elements)
+
+    # Mark which indices are cues
+    is_cue = [elements[i][0] in cue_types for i in range(n)]
+    is_struct = [elements[i][0] in structural for i in range(n)]
+
+    # For each element, calculate distance to nearest cue
+    # keep[i] = True if the element should be kept
+    keep = [False] * n
+
+    for i in range(n):
+        if is_cue[i] or is_struct[i]:
+            keep[i] = True
+            continue
+
+    # For each cue, mark 2 before and 1 after as kept
+    for i in range(n):
+        if not is_cue[i]:
+            continue
+        # 1 after
+        count_after = 0
+        for j in range(i + 1, n):
+            if is_cue[j] or is_struct[j]:
+                break
+            count_after += 1
+            if count_after <= 1:
+                keep[j] = True
+            else:
+                break
+        # 2 before
+        count_before = 0
+        for j in range(i - 1, -1, -1):
+            if is_cue[j] or is_struct[j]:
+                break
+            count_before += 1
+            if count_before <= 2:
+                keep[j] = True
+            else:
+                break
+
+    # Build output, replacing gaps with ELLIPSIS
+    output = []
+    in_gap = False
+    for i in range(n):
+        if keep[i]:
+            in_gap = False
+            output.append(elements[i])
+        else:
+            if not in_gap:
+                output.append(("ELLIPSIS",))
+                in_gap = True
 
     return output
 
@@ -701,6 +766,21 @@ def generate_technical_pdf(elements):
             )
             story.append(Spacer(1, 4))
             story.append(box)
+            story.append(Spacer(1, 4))
+
+        elif et == "CHOREO":
+            title, desc = elem[1], elem[2]
+            parts = [Paragraph(esc(title), styles["box_title"])]
+            if desc:
+                parts.append(Paragraph(esc(desc), styles["box_text"]))
+            box = make_callout_box(parts, BORDER_PURPLE, BG_PURPLE)
+            story.append(Spacer(1, 4))
+            story.append(box)
+            story.append(Spacer(1, 4))
+
+        elif et == "ELLIPSIS":
+            story.append(Spacer(1, 4))
+            story.append(Paragraph("[...]", styles["cue_name"]))
             story.append(Spacer(1, 4))
 
         elif et == "CUE_SPEECH":
