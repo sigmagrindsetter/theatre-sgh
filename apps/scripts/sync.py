@@ -280,6 +280,54 @@ def parse_choreo_rich_text(rich_texts):
     return title.strip(), desc.strip()
 
 
+# Names that signal third-person stage directions when found at
+# the start of a plain-text paragraph (mixed case = describing action,
+# ALL CAPS = speaker header which assign_continuations handles).
+_STAGE_DIR_NAMES = {
+    "jourdain", "jourdaina", "jourdainowi",
+    "krawiec", "krawca",
+    "krawczyk", "krawczyki", "krawczycy",
+    "lokaj", "lokaje", "lokajowi",
+    "michasia", "michasi", "michasie",
+    "dorymena", "dorymeny", "dorymenę",
+    "dorant", "doranta", "dorantowi",
+    "kleont", "kleonta",
+    "covielle", "coviellowi",
+    "lucylla", "lucylli", "lucyllę",
+    "molier", "moliera",
+    "nauczyciel", "nauczyciele", "nauczycieli",
+    "filozof", "filozofa",
+    "manekin", "manekina",
+    "śpiewaczka", "śpiewaczki",
+    "parawan", "zespół", "para", "sofa", "sofę",
+}
+
+
+def _is_dialogue_continuation(text):
+    """Check if a plain-text paragraph is dialogue (not a stage direction).
+
+    Stage directions describe actions in third person and typically start
+    with a character name in mixed case. Dialogue continuations are spoken
+    text: verse, direct speech, exclamations.
+
+    ALL CAPS first word (speaker header like "DORANT") is handled separately
+    by assign_continuations, so we let those through as continuations.
+    """
+    first_word = text.strip().split()[0] if text.strip() else ""
+    if not first_word:
+        return False
+
+    # ALL CAPS first word = speaker header, not a stage direction
+    if first_word == first_word.upper() and any(c.isalpha() for c in first_word):
+        return True
+
+    # Mixed/lowercase first word matching a character name = stage direction
+    if first_word.lower() in _STAGE_DIR_NAMES:
+        return False
+
+    return True
+
+
 def parse_blocks(blocks):
     """Convert Notion blocks into a flat list of structured elements.
 
@@ -337,12 +385,10 @@ def parse_blocks(blocks):
                     if char_name and char_name == char_name.upper() and any(c.isalpha() for c in char_name):
                         elements.append(("SPEECH", char_name, parts))
                     elif text:
-                        # Check if paragraph has non-italic plain text (dialogue)
-                        # vs all-italic (stage direction)
                         has_dialogue = any(
                             p[0] == "dialogue" for p in parts
                         )
-                        if has_dialogue:
+                        if has_dialogue and _is_dialogue_continuation(text):
                             elements.append(("CONTINUATION", parts))
                         else:
                             elements.append(("STAGE_DIR", text))
