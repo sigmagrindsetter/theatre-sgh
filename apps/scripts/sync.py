@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Individual character scripts generator.
+Script generator for "Mieszczanin szlachcicem".
 
-Reads the theatrical script from a Notion page, cross-references with the
-Obsady (cast) database, and generates a separate PDF for each role containing
-only the scenes and lines relevant to that character — with cue lines from
-other characters for context.
+Generates three types of PDFs from the Notion script page:
+1. Actor scripts — per role, full scene dialogue + stage dirs + choreo for that character
+2. Technical script — one combined PDF for sound + lighting (music/lighting cues + dialogue context)
+3. General script — full text with dialogue + stage directions only
 
-PDFs use standard theatrical formatting (A4, serif font) and are uploaded to
-Google Drive, then linked on a dedicated Notion page.
+Reads the script from Notion, cross-references with the Obsady (cast) database.
+PDFs uploaded to Google Drive and linked on a Notion page.
 """
 
 import io
@@ -38,13 +38,16 @@ from config import (
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.colors import Color
+from reportlab.lib.colors import Color, HexColor
+from reportlab.lib.units import mm
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
     Spacer,
     PageBreak,
     KeepTogether,
+    Table,
+    TableStyle,
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -87,10 +90,25 @@ def register_fonts():
 
 
 # ---------------------------------------------------------------------------
-# Styles
+# Colors
 # ---------------------------------------------------------------------------
 
 GRAY = Color(0.45, 0.45, 0.45)
+LIGHT_GRAY = Color(0.85, 0.85, 0.85)
+BG_PURPLE = HexColor("#f3e8ff")
+BG_BLUE = HexColor("#e8f0fe")
+BG_YELLOW = HexColor("#fef9e7")
+BG_GRAY = HexColor("#f0f0f0")
+BORDER_PURPLE = HexColor("#9333ea")
+BORDER_BLUE = HexColor("#4285f4")
+BORDER_YELLOW = HexColor("#f59e0b")
+BORDER_GRAY = HexColor("#9ca3af")
+PAGE_W = A4[0] - 140  # content width (margins 70+70)
+
+
+# ---------------------------------------------------------------------------
+# Styles
+# ---------------------------------------------------------------------------
 
 def make_styles():
     return {
@@ -102,38 +120,56 @@ def make_styles():
             "scene", fontName="SerifBold", fontSize=13,
             alignment=TA_CENTER, leading=18, spaceBefore=14, spaceAfter=8,
         ),
+        # Own speech
+        "own_name": ParagraphStyle(
+            "own_name", fontName="SerifBold", fontSize=12,
+            alignment=TA_CENTER, leading=16, spaceBefore=10, spaceAfter=2,
+        ),
+        "own_dialogue": ParagraphStyle(
+            "own_dialogue", fontName="Serif", fontSize=12,
+            alignment=TA_CENTER, leading=16, spaceBefore=0, spaceAfter=2,
+        ),
+        "own_dir": ParagraphStyle(
+            "own_dir", fontName="SerifItalic", fontSize=11,
+            alignment=TA_CENTER, leading=15, spaceBefore=1, spaceAfter=1,
+            textColor=GRAY,
+        ),
+        # Cue speech (other characters) — gray, NOT italic
+        "cue_name": ParagraphStyle(
+            "cue_name", fontName="SerifBold", fontSize=11,
+            alignment=TA_CENTER, leading=15, spaceBefore=8, spaceAfter=1,
+            textColor=GRAY,
+        ),
+        "cue_dialogue": ParagraphStyle(
+            "cue_dialogue", fontName="Serif", fontSize=11,
+            alignment=TA_CENTER, leading=14, spaceBefore=0, spaceAfter=2,
+            textColor=GRAY,
+        ),
+        "cue_dir": ParagraphStyle(
+            "cue_dir", fontName="SerifItalic", fontSize=10,
+            alignment=TA_CENTER, leading=14, spaceBefore=1, spaceAfter=1,
+            textColor=GRAY,
+        ),
+        # Stage directions (standalone)
         "stage_dir": ParagraphStyle(
             "stage_dir", fontName="SerifItalic", fontSize=11,
             alignment=TA_LEFT, leading=15, spaceBefore=3, spaceAfter=3,
-            leftIndent=20, textColor=GRAY,
-        ),
-        "char_name": ParagraphStyle(
-            "char_name", fontName="SerifBold", fontSize=12,
-            alignment=TA_CENTER, leading=16, spaceBefore=10, spaceAfter=2,
-        ),
-        "char_name_own": ParagraphStyle(
-            "char_name_own", fontName="SerifBold", fontSize=12,
-            alignment=TA_CENTER, leading=16, spaceBefore=10, spaceAfter=2,
-        ),
-        "dialogue": ParagraphStyle(
-            "dialogue", fontName="Serif", fontSize=12,
-            alignment=TA_JUSTIFY, leading=16, spaceBefore=0, spaceAfter=2,
-        ),
-        "inline_dir": ParagraphStyle(
-            "inline_dir", fontName="SerifItalic", fontSize=11,
-            alignment=TA_LEFT, leading=14, spaceBefore=1, spaceAfter=1,
-            leftIndent=20, textColor=GRAY,
-        ),
-        "cue_name": ParagraphStyle(
-            "cue_name", fontName="SerifBold", fontSize=10,
-            alignment=TA_CENTER, leading=14, spaceBefore=8, spaceAfter=1,
             textColor=GRAY,
         ),
-        "cue_text": ParagraphStyle(
-            "cue_text", fontName="SerifItalic", fontSize=10,
-            alignment=TA_JUSTIFY, leading=13, spaceBefore=0, spaceAfter=2,
-            textColor=GRAY,
+        # Inside callout boxes
+        "box_title": ParagraphStyle(
+            "box_title", fontName="SerifBold", fontSize=10,
+            alignment=TA_LEFT, leading=14,
         ),
+        "box_text": ParagraphStyle(
+            "box_text", fontName="Serif", fontSize=10,
+            alignment=TA_LEFT, leading=14,
+        ),
+        "box_text_gray": ParagraphStyle(
+            "box_text_gray", fontName="Serif", fontSize=9,
+            alignment=TA_CENTER, leading=13, textColor=GRAY,
+        ),
+        # Title page
         "title": ParagraphStyle(
             "title", fontName="SerifBold", fontSize=22,
             alignment=TA_CENTER, leading=28,
@@ -142,12 +178,31 @@ def make_styles():
             "subtitle", fontName="Serif", fontSize=14,
             alignment=TA_CENTER, leading=20,
         ),
-        "music": ParagraphStyle(
-            "music", fontName="SerifItalic", fontSize=10,
-            alignment=TA_LEFT, leading=14, spaceBefore=2, spaceAfter=2,
-            leftIndent=20, textColor=GRAY,
-        ),
     }
+
+
+def make_callout_box(flowables, border_color, bg_color):
+    """Create a callout box with a colored left border and background."""
+    border_w = 3
+    content_w = PAGE_W - border_w - 6
+    inner = Table([[f] for f in flowables], colWidths=[content_w])
+    inner.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    outer = Table([[" ", inner]], colWidths=[border_w, content_w + 12])
+    outer.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), border_color),
+        ("BACKGROUND", (1, 0), (1, -1), bg_color),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    return outer
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +210,6 @@ def make_styles():
 # ---------------------------------------------------------------------------
 
 def fetch_blocks_recursive(notion, block_id):
-    """Fetch all blocks from a page, recursing into children."""
     blocks = []
     cursor = None
     while True:
@@ -185,18 +239,15 @@ def get_text(rich_texts):
 
 def parse_speech_block(rich_texts):
     """Parse a paragraph's rich text into (character_name, parts).
-
-    Parts is a list of (type, text) where type is 'dialogue' or 'direction'.
+    Parts: list of ('dialogue', text) or ('direction', text).
     """
     char_name = ""
     parts = []
-
     for t in rich_texts:
         ann = t.get("annotations", {})
         text = t["plain_text"]
         is_bold = ann.get("bold", False)
         is_italic = ann.get("italic", False)
-
         if is_bold and not is_italic:
             char_name += text.strip()
         elif is_italic:
@@ -207,8 +258,26 @@ def parse_speech_block(rich_texts):
             cleaned = text.strip()
             if cleaned:
                 parts.append(("dialogue", cleaned))
-
     return char_name, parts
+
+
+def parse_choreo_rich_text(rich_texts):
+    """Extract bold title and normal description from a choreo callout."""
+    title = ""
+    desc = ""
+    past_title = False
+    for t in rich_texts:
+        ann = t.get("annotations", {})
+        text = t["plain_text"]
+        if ann.get("bold") and not past_title:
+            title += text
+        elif text.strip() == "" and not past_title and title:
+            past_title = True
+        else:
+            if title and not past_title:
+                past_title = True
+            desc += text
+    return title.strip(), desc.strip()
 
 
 def parse_blocks(blocks):
@@ -217,8 +286,11 @@ def parse_blocks(blocks):
     Element types:
         ('ACT', text)
         ('SCENE', text)
-        ('STAGE_DIR', text)       — scene-level stage direction (callout)
-        ('MUSIC', text)           — music cue (callout starting with Muzyka/Melodia)
+        ('OBSADA', text)              -- cast list from callout
+        ('STAGE_DIR', text)           -- stage direction
+        ('MUSIC', text)               -- music cue
+        ('LIGHTING', text)            -- lighting cue
+        ('CHOREO', title, desc)       -- choreography block
         ('SPEECH', char_name, [(type, text), ...])
         ('IMAGE',)
     """
@@ -231,28 +303,42 @@ def parse_blocks(blocks):
             text = get_text(rt).strip() if rt else ""
 
             if btype == "heading_1":
+                if "NOTATKI" in text.upper():
+                    return  # stop before production notes
                 elements.append(("ACT", text))
+
             elif btype == "heading_2":
                 elements.append(("SCENE", text))
+
             elif btype == "callout":
-                if text:
-                    if re.match(r"(?i)(muzyka|melodia)", text):
-                        elements.append(("MUSIC", text))
-                    else:
-                        elements.append(("STAGE_DIR", text))
-            elif btype == "image":
-                elements.append(("IMAGE",))
-            elif btype == "paragraph":
-                if not rt:
-                    continue
-                char_name, parts = parse_speech_block(rt)
-                if char_name and char_name == char_name.upper() and any(c.isalpha() for c in char_name):
-                    elements.append(("SPEECH", char_name, parts))
+                icon_data = b.get("callout", {}).get("icon", {})
+                emoji = icon_data.get("emoji", "") if icon_data.get("type") == "emoji" else ""
+
+                if emoji == "\U0001f3b5":  # 🎵
+                    elements.append(("MUSIC", text))
+                elif emoji == "\U0001f483":  # 💃
+                    title, desc = parse_choreo_rich_text(rt)
+                    elements.append(("CHOREO", title, desc))
+                elif emoji == "\U0001f465":  # 👥
+                    elements.append(("OBSADA", text))
+                elif emoji == "\U0001f4a1":  # 💡
+                    elements.append(("LIGHTING", text))
                 elif text:
-                    # Non-character paragraph — treat as stage direction
                     elements.append(("STAGE_DIR", text))
 
-            # Recurse into children
+            elif btype == "image":
+                elements.append(("IMAGE",))
+
+            elif btype == "paragraph":
+                if not rt:
+                    pass
+                else:
+                    char_name, parts = parse_speech_block(rt)
+                    if char_name and char_name == char_name.upper() and any(c.isalpha() for c in char_name):
+                        elements.append(("SPEECH", char_name, parts))
+                    elif text:
+                        elements.append(("STAGE_DIR", text))
+
             if b.get("_children"):
                 _process(b["_children"])
 
@@ -265,7 +351,6 @@ def parse_blocks(blocks):
 # ---------------------------------------------------------------------------
 
 def get_obsady_roles(notion):
-    """Fetch role names from the Obsady database. Returns list of role names."""
     roles = []
     cursor = None
     while True:
@@ -286,56 +371,45 @@ def get_obsady_roles(notion):
 
 
 def normalize_name(name):
-    """Normalize a character name for matching."""
     n = name.strip().upper()
-    # Replace digits with roman numerals: 1→I, 2→II, 3→III
     n = re.sub(r"(\d+)", lambda m: {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V"}.get(int(m.group()), m.group()), n)
     return n
 
 
 def build_role_character_map(roles, all_script_characters):
-    """Map each Obsady role to a set of script character names."""
-    role_map = {}  # role_name -> set of character names
-
+    role_map = {}
     for role in roles:
         if role in ROLE_OVERRIDES:
             chars = set(ROLE_OVERRIDES[role])
         else:
-            # Split by "/" and try matching each part
             parts = [p.strip() for p in role.split("/")]
             chars = set()
             for part in parts:
                 normalized = normalize_name(part)
                 if normalized in all_script_characters:
                     chars.add(normalized)
-                # Try with "PAN"/"PANI" prefix
                 elif f"PAN {normalized}" in all_script_characters:
                     chars.add(f"PAN {normalized}")
                 elif f"PANI {normalized}" in all_script_characters:
                     chars.add(f"PANI {normalized}")
-
-        # Add combined character mappings
         expanded = set(chars)
         for combined, individuals in COMBINED_CHARACTERS.items():
             if expanded & set(individuals):
                 expanded.add(combined)
-
         role_map[role] = expanded
-
     return role_map
 
 
 def get_all_script_characters(elements):
-    """Extract all unique character names from parsed elements."""
     return {e[1] for e in elements if e[0] == "SPEECH"}
 
 
 # ---------------------------------------------------------------------------
-# Character script filtering
+# Scene grouping
 # ---------------------------------------------------------------------------
 
 def _group_by_scene(elements):
-    """Group flat elements into (act_name, scene_name, scene_elems) tuples."""
+    """Group elements into (act_name, scene_name, scene_elems) tuples."""
     scenes = []
     current_act = None
     current_scene = None
@@ -343,6 +417,10 @@ def _group_by_scene(elements):
 
     for elem in elements:
         if elem[0] == "ACT":
+            if current_scene is not None:
+                scenes.append((current_act, current_scene, current_elems))
+                current_elems = []
+                current_scene = None
             current_act = elem[1]
         elif elem[0] == "SCENE":
             if current_scene is not None:
@@ -355,77 +433,65 @@ def _group_by_scene(elements):
     if current_scene is not None:
         scenes.append((current_act, current_scene, current_elems))
 
-    # Elements before first scene (e.g. prolog stage dirs)
+    # Prolog elements (before first scene heading)
     prolog_elems = []
     for elem in elements:
         if elem[0] in ("ACT", "SCENE"):
-            break
+            if elem[0] == "SCENE":
+                break
+            continue
         prolog_elems.append(elem)
     if prolog_elems:
-        scenes.insert(0, (None, None, prolog_elems))
+        scenes.insert(0, (elements[0][1] if elements and elements[0][0] == "ACT" else "PROLOG", None, prolog_elems))
 
     return scenes
 
 
-def _role_in_scene(scene_elems, char_names, role_search_names):
-    """Check if a role is present in a scene.
+# ---------------------------------------------------------------------------
+# Filtering
+# ---------------------------------------------------------------------------
 
-    Matches by:
-    - character having a SPEECH in the scene
-    - any role name appearing in STAGE_DIR or MUSIC text (e.g. scene
-      participant lists, stage directions mentioning the character)
-    """
+def _role_search_names(role_name, char_names):
+    names = set()
+    for part in role_name.split("/"):
+        cleaned = part.strip().lower()
+        if cleaned:
+            names.add(cleaned)
+    for cn in char_names:
+        names.add(cn.lower())
+    return names
+
+
+def _role_in_scene(scene_elems, char_names, role_search_names):
+    """Check if a role is in a scene — via OBSADA block or speech presence."""
     for e in scene_elems:
+        if e[0] == "OBSADA":
+            text_lower = e[1].lower()
+            if any(name in text_lower for name in role_search_names):
+                return True
         if e[0] == "SPEECH" and e[1] in char_names:
             return True
-        if e[0] in ("STAGE_DIR", "MUSIC"):
+    # Fallback: check stage directions
+    for e in scene_elems:
+        if e[0] == "STAGE_DIR":
             text_lower = e[1].lower()
             if any(name in text_lower for name in role_search_names):
                 return True
     return False
 
 
-def _emit_full_scene(scene_elems, char_names):
-    """Emit all elements from a scene with speeches tagged as OWN or CUE."""
-    output = []
-    for e in scene_elems:
-        if e[0] == "SPEECH":
-            if e[1] in char_names:
-                output.append(("OWN_SPEECH", e[1], e[2]))
-            else:
-                output.append(("CUE_SPEECH", e[1], e[2]))
-        elif e[0] in ("STAGE_DIR", "MUSIC"):
-            output.append(e)
-    return output
-
-
-def _role_search_names(role_name, char_names):
-    """Build lowercase search strings from role name and character names."""
-    names = set()
-    # From the Obsady role (split by "/")
-    for part in role_name.split("/"):
-        cleaned = part.strip().lower()
-        if cleaned:
-            names.add(cleaned)
-    # From matched script character names
-    for cn in char_names:
-        names.add(cn.lower())
-    return names
+def _char_in_choreo(choreo_title, choreo_desc, search_names):
+    """Check if a character participates in a choreography block."""
+    full = (choreo_title + " " + choreo_desc).lower()
+    return any(name in full for name in search_names)
 
 
 def filter_for_role(elements, char_names, role_name=""):
-    """Create a character script with full scene context.
-
-    Includes ALL elements from every scene the character is in (speeches,
-    stage directions, music cues).  The character's own speeches are tagged
-    OWN_SPEECH; everyone else's are CUE_SPEECH.
-
-    A scene is "active" if the character has speeches there OR is mentioned
-    by name in any stage direction / callout.
+    """Actor script: full scene dialogue + stage dirs + choreo if character participates.
+    No MUSIC, no LIGHTING, no OBSADA in output (OBSADA used only for scene detection).
     """
     scenes = _group_by_scene(elements)
     search_names = _role_search_names(role_name, char_names)
-
     output = []
     last_act = None
 
@@ -436,127 +502,253 @@ def filter_for_role(elements, char_names, role_name=""):
         if act_name and act_name != last_act:
             output.append(("ACT", act_name))
             last_act = act_name
-
         if scene_name:
             output.append(("SCENE", scene_name))
 
-        output.extend(_emit_full_scene(scene_elems, char_names))
+        # Find OBSADA for this scene
+        for e in scene_elems:
+            if e[0] == "OBSADA":
+                output.append(e)
+                break
+
+        for e in scene_elems:
+            if e[0] == "SPEECH":
+                if e[1] in char_names:
+                    output.append(("OWN_SPEECH", e[1], e[2]))
+                else:
+                    output.append(("CUE_SPEECH", e[1], e[2]))
+            elif e[0] == "STAGE_DIR":
+                output.append(e)
+            elif e[0] == "CHOREO":
+                output.append(e)
+            # MUSIC, LIGHTING, OBSADA, IMAGE — skip
 
     return output
 
 
-def filter_for_technical_role(elements):
-    """Create a full cue sheet for the sound/audio role.
-
-    Every callout block (STAGE_DIR or MUSIC) is an audio cue.  The script
-    includes ALL scenes that contain at least one callout, with full context
-    (all speeches as CUE, all callouts as OWN).
+def filter_for_technical(elements):
+    """Technical script: MUSIC + LIGHTING as own cues, dialogue as context.
+    No STAGE_DIR, no CHOREO, no OBSADA.
     """
     scenes = _group_by_scene(elements)
-
     output = []
     last_act = None
 
     for act_name, scene_name, scene_elems in scenes:
-        # Include scene if it has any callout (STAGE_DIR or MUSIC)
-        has_callout = any(e[0] in ("STAGE_DIR", "MUSIC") for e in scene_elems)
-        if not has_callout:
+        has_cue = any(e[0] in ("MUSIC", "LIGHTING") for e in scene_elems)
+        if not has_cue:
             continue
 
         if act_name and act_name != last_act:
             output.append(("ACT", act_name))
             last_act = act_name
-
         if scene_name:
             output.append(("SCENE", scene_name))
 
-        # All callouts are OWN, all speeches are CUE
         for e in scene_elems:
-            if e[0] in ("STAGE_DIR", "MUSIC"):
-                output.append(("OWN_SPEECH", "AUDIACJA", [("direction", e[1])]))
+            if e[0] == "MUSIC":
+                output.append(("OWN_MUSIC", e[1]))
+            elif e[0] == "LIGHTING":
+                output.append(("OWN_LIGHTING", e[1]))
             elif e[0] == "SPEECH":
                 output.append(("CUE_SPEECH", e[1], e[2]))
 
     return output
 
 
+def filter_for_general(elements):
+    """General script: all dialogue + stage directions. Nothing else."""
+    scenes = _group_by_scene(elements)
+    output = []
+    last_act = None
+
+    for act_name, scene_name, scene_elems in scenes:
+        if act_name and act_name != last_act:
+            output.append(("ACT", act_name))
+            last_act = act_name
+        if scene_name:
+            output.append(("SCENE", scene_name))
+
+        for e in scene_elems:
+            if e[0] == "SPEECH":
+                output.append(("OWN_SPEECH", e[1], e[2]))
+            elif e[0] == "STAGE_DIR":
+                output.append(e)
+
+    return output
+
+
 # ---------------------------------------------------------------------------
-# PDF generation (theatrical format)
+# PDF generation
 # ---------------------------------------------------------------------------
 
 def esc(text):
-    """Escape text for ReportLab Paragraph XML."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def generate_script_pdf(role_name, elements):
-    """Generate a theatrical-format PDF for a single role."""
-    register_fonts()
-    styles = make_styles()
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        leftMargin=70,
-        rightMargin=70,
-        topMargin=60,
-        bottomMargin=60,
-    )
-
-    story = []
-
-    # --- Title page ---
+def _build_title_page(story, styles, role_name, script_type):
     story.append(Spacer(1, 180))
     story.append(Paragraph(esc(role_name.upper()), styles["title"]))
     story.append(Spacer(1, 30))
-    story.append(Paragraph("Scenariusz aktorski", styles["subtitle"]))
+    story.append(Paragraph(esc(script_type), styles["subtitle"]))
     story.append(Spacer(1, 15))
     story.append(Paragraph("Mieszczanin szlachcicem", styles["subtitle"]))
     story.append(Spacer(1, 10))
-    story.append(Paragraph("Teatr Scena Główna Handlowa", styles["subtitle"]))
+    story.append(Paragraph("Teatr Scena Glowna Handlowa", styles["subtitle"]))
     story.append(PageBreak())
 
-    # --- Content ---
-    for elem in elements:
-        etype = elem[0]
 
-        if etype == "ACT":
+def generate_actor_pdf(role_name, elements):
+    """Generate actor script PDF."""
+    register_fonts()
+    styles = make_styles()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=70, rightMargin=70, topMargin=60, bottomMargin=60)
+    story = []
+    _build_title_page(story, styles, role_name, "Scenariusz aktorski")
+
+    for elem in elements:
+        et = elem[0]
+
+        if et == "ACT":
             story.append(Spacer(1, 12))
             story.append(Paragraph(esc(elem[1]), styles["act"]))
 
-        elif etype == "SCENE":
+        elif et == "SCENE":
             story.append(Spacer(1, 6))
             story.append(Paragraph(esc(elem[1]), styles["scene"]))
 
-        elif etype == "STAGE_DIR":
-            story.append(Paragraph(f"({esc(elem[1])})", styles["stage_dir"]))
+        elif et == "OBSADA":
+            box = make_callout_box(
+                [Paragraph(esc(elem[1]), styles["box_text_gray"])],
+                BORDER_GRAY, BG_GRAY,
+            )
+            story.append(Spacer(1, 4))
+            story.append(box)
+            story.append(Spacer(1, 4))
 
-        elif etype == "MUSIC":
-            story.append(Paragraph(f"[{esc(elem[1])}]", styles["music"]))
+        elif et == "STAGE_DIR":
+            story.append(Paragraph(esc(elem[1]), styles["stage_dir"]))
 
-        elif etype == "CUE_SPEECH":
-            char_name = elem[1]
-            parts = elem[2]
-            # Full cue speech — all dialogue and stage directions, in gray
+        elif et == "CHOREO":
+            title, desc = elem[1], elem[2]
+            parts = [Paragraph(esc(title), styles["box_title"])]
+            if desc:
+                parts.append(Paragraph(esc(desc), styles["box_text"]))
+            box = make_callout_box(parts, BORDER_PURPLE, BG_PURPLE)
+            story.append(Spacer(1, 4))
+            story.append(box)
+            story.append(Spacer(1, 4))
+
+        elif et == "OWN_SPEECH":
+            char_name, parts = elem[1], elem[2]
+            block = [Paragraph(esc(char_name), styles["own_name"])]
+            for ptype, ptext in parts:
+                if ptype == "direction":
+                    block.append(Paragraph(esc(ptext), styles["own_dir"]))
+                else:
+                    block.append(Paragraph(esc(ptext), styles["own_dialogue"]))
+            story.append(KeepTogether(block))
+
+        elif et == "CUE_SPEECH":
+            char_name, parts = elem[1], elem[2]
             block = [Paragraph(esc(char_name), styles["cue_name"])]
             for ptype, ptext in parts:
                 if ptype == "direction":
-                    block.append(Paragraph(f"({esc(ptext)})", styles["inline_dir"]))
+                    block.append(Paragraph(esc(ptext), styles["cue_dir"]))
                 else:
-                    block.append(Paragraph(esc(ptext), styles["cue_text"]))
+                    block.append(Paragraph(esc(ptext), styles["cue_dialogue"]))
             if len(block) > 1:
                 story.append(KeepTogether(block))
 
-        elif etype == "OWN_SPEECH":
-            char_name = elem[1]
-            parts = elem[2]
-            block = [Paragraph(esc(char_name), styles["char_name_own"])]
+    doc.build(story)
+    return buf.getvalue()
+
+
+def generate_technical_pdf(elements):
+    """Generate technical script PDF (sound + lighting)."""
+    register_fonts()
+    styles = make_styles()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=70, rightMargin=70, topMargin=60, bottomMargin=60)
+    story = []
+    _build_title_page(story, styles, "Audiacja / Luminacja", "Scenariusz techniczny")
+
+    for elem in elements:
+        et = elem[0]
+
+        if et == "ACT":
+            story.append(Spacer(1, 12))
+            story.append(Paragraph(esc(elem[1]), styles["act"]))
+
+        elif et == "SCENE":
+            story.append(Spacer(1, 6))
+            story.append(Paragraph(esc(elem[1]), styles["scene"]))
+
+        elif et == "OWN_MUSIC":
+            box = make_callout_box(
+                [Paragraph(esc(elem[1]), styles["box_title"])],
+                BORDER_BLUE, BG_BLUE,
+            )
+            story.append(Spacer(1, 4))
+            story.append(box)
+            story.append(Spacer(1, 4))
+
+        elif et == "OWN_LIGHTING":
+            box = make_callout_box(
+                [Paragraph(esc(elem[1]), styles["box_title"])],
+                BORDER_YELLOW, BG_YELLOW,
+            )
+            story.append(Spacer(1, 4))
+            story.append(box)
+            story.append(Spacer(1, 4))
+
+        elif et == "CUE_SPEECH":
+            char_name, parts = elem[1], elem[2]
+            block = [Paragraph(esc(char_name), styles["cue_name"])]
             for ptype, ptext in parts:
                 if ptype == "direction":
-                    block.append(Paragraph(f"({esc(ptext)})", styles["inline_dir"]))
+                    pass  # no stage dirs in technical script
                 else:
-                    block.append(Paragraph(esc(ptext), styles["dialogue"]))
+                    block.append(Paragraph(esc(ptext), styles["cue_dialogue"]))
+            if len(block) > 1:
+                story.append(KeepTogether(block))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def generate_general_pdf(elements):
+    """Generate general script PDF — dialogue + stage directions only."""
+    register_fonts()
+    styles = make_styles()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=70, rightMargin=70, topMargin=60, bottomMargin=60)
+    story = []
+    _build_title_page(story, styles, "Scenariusz ogolny", "Tekst sztuki")
+
+    for elem in elements:
+        et = elem[0]
+
+        if et == "ACT":
+            story.append(Spacer(1, 12))
+            story.append(Paragraph(esc(elem[1]), styles["act"]))
+
+        elif et == "SCENE":
+            story.append(Spacer(1, 6))
+            story.append(Paragraph(esc(elem[1]), styles["scene"]))
+
+        elif et == "STAGE_DIR":
+            story.append(Paragraph(esc(elem[1]), styles["stage_dir"]))
+
+        elif et == "OWN_SPEECH":
+            char_name, parts = elem[1], elem[2]
+            block = [Paragraph(esc(char_name), styles["own_name"])]
+            for ptype, ptext in parts:
+                if ptype == "direction":
+                    block.append(Paragraph(esc(ptext), styles["own_dir"]))
+                else:
+                    block.append(Paragraph(esc(ptext), styles["own_dialogue"]))
             story.append(KeepTogether(block))
 
     doc.build(story)
@@ -570,7 +762,6 @@ def generate_script_pdf(role_name, elements):
 def get_drive_service():
     from googleapiclient.discovery import build
     from google.oauth2.credentials import Credentials
-
     creds = Credentials(
         token=None,
         refresh_token=os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN"),
@@ -582,57 +773,35 @@ def get_drive_service():
 
 
 def get_or_create_folder(drive):
-    resp = (
-        drive.files()
-        .list(
-            q=f"name='{DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            fields="files(id)",
-        )
-        .execute()
-    )
+    resp = drive.files().list(
+        q=f"name='{DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields="files(id)",
+    ).execute()
     if resp.get("files"):
         return resp["files"][0]["id"]
-
     meta = {"name": DRIVE_FOLDER_NAME, "mimeType": "application/vnd.google-apps.folder"}
     folder = drive.files().create(body=meta, fields="id").execute()
     folder_id = folder["id"]
-    drive.permissions().create(
-        fileId=folder_id, body={"type": "anyone", "role": "reader"}
-    ).execute()
+    drive.permissions().create(fileId=folder_id, body={"type": "anyone", "role": "reader"}).execute()
     print(f"  Created Drive folder '{DRIVE_FOLDER_NAME}' ({folder_id})")
     return folder_id
 
 
 def upload_pdf(drive, folder_id, pdf_bytes, filename):
     from googleapiclient.http import MediaInMemoryUpload
-
-    # Replace existing file if present
-    resp = (
-        drive.files()
-        .list(
-            q=f"name='{filename}' and '{folder_id}' in parents and trashed=false",
-            fields="files(id)",
-        )
-        .execute()
-    )
+    resp = drive.files().list(
+        q=f"name='{filename}' and '{folder_id}' in parents and trashed=false",
+        fields="files(id)",
+    ).execute()
     for f in resp.get("files", []):
         drive.files().delete(fileId=f["id"]).execute()
-
     media = MediaInMemoryUpload(pdf_bytes, mimetype="application/pdf", resumable=False)
-    uploaded = (
-        drive.files()
-        .create(
-            body={"name": filename, "parents": [folder_id]},
-            media_body=media,
-            fields="id",
-        )
-        .execute()
-    )
-    file_id = uploaded["id"]
-    drive.permissions().create(
-        fileId=file_id, body={"type": "anyone", "role": "reader"}
+    uploaded = drive.files().create(
+        body={"name": filename, "parents": [folder_id]},
+        media_body=media, fields="id",
     ).execute()
-
+    file_id = uploaded["id"]
+    drive.permissions().create(fileId=file_id, body={"type": "anyone", "role": "reader"}).execute()
     return file_id, f"https://drive.google.com/file/d/{file_id}/view"
 
 
@@ -647,20 +816,15 @@ def sanitize_filename(text):
 
 
 def find_output_page(notion):
-    """Search for the output page by title under the parent page."""
-    children = notion.blocks.children.list(
-        block_id=OUTPUT_PARENT_PAGE_ID, page_size=100
-    )
+    children = notion.blocks.children.list(block_id=OUTPUT_PARENT_PAGE_ID, page_size=100)
     for block in children["results"]:
         if block["type"] == "child_page":
-            title = block["child_page"].get("title", "")
-            if title == OUTPUT_PAGE_TITLE:
+            if block["child_page"].get("title", "") == OUTPUT_PAGE_TITLE:
                 return block["id"]
     return None
 
 
 def create_output_page(notion):
-    """Create the output page as a child of the parent page."""
     page = notion.pages.create(
         parent={"page_id": OUTPUT_PARENT_PAGE_ID},
         properties={"title": [{"text": {"content": OUTPUT_PAGE_TITLE}}]},
@@ -670,7 +834,6 @@ def create_output_page(notion):
 
 
 def clear_page_content(notion, page_id):
-    """Remove all blocks from a page."""
     cursor = None
     block_ids = []
     while True:
@@ -682,40 +845,24 @@ def clear_page_content(notion, page_id):
         if not result.get("has_more"):
             break
         cursor = result.get("next_cursor")
-
     for bid in block_ids:
         notion.blocks.delete(block_id=bid)
 
 
 def update_output_page(notion, page_id, role_files):
-    """Write role headings and file blocks to the output page.
-
-    role_files: list of (role_name, drive_url, filename)
-    """
     clear_page_content(notion, page_id)
-
     children = []
     for role_name, drive_url, filename in role_files:
         children.append({
             "type": "heading_3",
-            "heading_3": {
-                "rich_text": [{"type": "text", "text": {"content": role_name}}],
-            },
+            "heading_3": {"rich_text": [{"type": "text", "text": {"content": role_name}}]},
         })
         children.append({
             "type": "file",
-            "file": {
-                "type": "external",
-                "external": {"url": drive_url},
-                "name": filename,
-            },
+            "file": {"type": "external", "external": {"url": drive_url}, "name": filename},
         })
-
-    # Notion API allows max 100 children per append
     for i in range(0, len(children), 100):
-        notion.blocks.children.append(
-            block_id=page_id, children=children[i : i + 100]
-        )
+        notion.blocks.children.append(block_id=page_id, children=children[i:i + 100])
 
 
 # ---------------------------------------------------------------------------
@@ -725,7 +872,6 @@ def update_output_page(notion, page_id, role_files):
 def sync():
     notion = NotionAuth.get_client()
 
-    # 1. Check for changes
     force = "--force" in sys.argv
     changed, timestamp = check_page_changed(notion, SOURCE_PAGE_ID, "scripts")
     if not changed and not force:
@@ -734,7 +880,7 @@ def sync():
 
     print(f"Changes detected (last edit: {timestamp})")
 
-    # 2. Fetch and parse script
+    # 1. Fetch and parse
     print("Fetching script blocks...")
     blocks = fetch_blocks_recursive(notion, SOURCE_PAGE_ID)
     elements = parse_blocks(blocks)
@@ -743,73 +889,79 @@ def sync():
     all_chars = get_all_script_characters(elements)
     print(f"  Found {len(all_chars)} unique characters")
 
-    # 3. Get roles from Obsady and build mapping
+    # 2. Get roles and build mapping
     roles = get_obsady_roles(notion)
     print(f"  {len(roles)} roles in Obsady")
-
     role_map = build_role_character_map(roles, all_chars)
 
-    # 4. Generate PDFs
+    # 3. Generate PDFs
     register_fonts()
     drive = get_drive_service()
     folder_id = get_or_create_folder(drive)
 
-    role_files = []  # (role_name, drive_url, filename)
+    role_files = []
     generated = 0
     skipped = 0
 
+    # --- Actor scripts ---
     for role in sorted(roles):
-        # Technical roles get a cue-sheet style script
         if role in TECHNICAL_ROLES:
-            filtered = filter_for_technical_role(elements)
-            own_count = sum(1 for e in filtered if e[0] == "OWN_SPEECH")
-            if own_count == 0:
-                print(f"  Skipped: {role} (no cues found)")
-                skipped += 1
-                continue
-        else:
-            chars = role_map.get(role, set())
-            if not chars:
-                print(f"  Skipped: {role} (no speaking parts)")
-                skipped += 1
-                continue
+            continue
+        chars = role_map.get(role, set())
+        if not chars:
+            print(f"  Skipped: {role} (no speaking parts)")
+            skipped += 1
+            continue
 
-            filtered = filter_for_role(elements, chars, role_name=role)
-            own_count = sum(1 for e in filtered if e[0] == "OWN_SPEECH")
-            if own_count == 0:
-                print(f"  Skipped: {role} (0 speeches after filtering)")
-                skipped += 1
-                continue
+        filtered = filter_for_role(elements, chars, role_name=role)
+        own_count = sum(1 for e in filtered if e[0] == "OWN_SPEECH")
+        if own_count == 0:
+            print(f"  Skipped: {role} (0 speeches after filtering)")
+            skipped += 1
+            continue
 
-        # Generate PDF
-        pdf_bytes = generate_script_pdf(role, filtered)
+        pdf_bytes = generate_actor_pdf(role, filtered)
         filename = f"scenariusz-{sanitize_filename(role)}.pdf"
-
-        # Upload to Drive
         file_id, view_url = upload_pdf(drive, folder_id, pdf_bytes, filename)
         role_files.append((role, view_url, filename))
-        print(f"  Generated: {role} ({own_count} cues) → {filename}")
+        print(f"  Generated: {role} ({own_count} speeches)")
         generated += 1
 
-    # 5. Update Notion output page
+    # --- Technical script ---
+    tech_filtered = filter_for_technical(elements)
+    tech_cues = sum(1 for e in tech_filtered if e[0] in ("OWN_MUSIC", "OWN_LIGHTING"))
+    if tech_cues > 0:
+        pdf_bytes = generate_technical_pdf(tech_filtered)
+        filename = "scenariusz-techniczny.pdf"
+        file_id, view_url = upload_pdf(drive, folder_id, pdf_bytes, filename)
+        role_files.append(("Scenariusz techniczny", view_url, filename))
+        print(f"  Generated: Technical ({tech_cues} cues)")
+        generated += 1
+
+    # --- General script ---
+    gen_filtered = filter_for_general(elements)
+    pdf_bytes = generate_general_pdf(gen_filtered)
+    filename = "scenariusz-ogolny.pdf"
+    file_id, view_url = upload_pdf(drive, folder_id, pdf_bytes, filename)
+    role_files.append(("Scenariusz ogolny", view_url, filename))
+    print(f"  Generated: General script")
+    generated += 1
+
+    # 4. Update Notion output page
     print("Updating Notion output page...")
     page_id = find_output_page(notion)
     if not page_id:
         page_id = create_output_page(notion)
     update_output_page(notion, page_id, role_files)
 
-    # 6. Update cache
     set_cached_time("scripts", timestamp)
-
-    print(
-        f"\nSync complete: {generated} generated, {skipped} skipped"
-    )
+    print(f"\nSync complete: {generated} generated, {skipped} skipped")
     return True
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Individual Character Scripts Sync")
+    print("Script Generator — Mieszczanin szlachcicem")
     print("=" * 60)
     success = sync()
     sys.exit(0 if success else 1)

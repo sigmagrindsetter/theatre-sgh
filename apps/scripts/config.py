@@ -19,10 +19,10 @@ DRIVE_FOLDER_NAME = "Theatre SGH - Scenariusze Aktorskie"
 # this dict provides overrides for non-obvious names.
 # ---------------------------------------------------------------------------
 ROLE_OVERRIDES = {
-    "Lokaj1/Muzyk1/Krawczyk1": ["LOKAJ I", "CZELADNIK I"],
-    "Lokaj2/Muzyk2": ["LOKAJ II", "CZELADNIK II"],
-    "Muzyk3/Krawczyk2": [],
-    "Dorymena/śpiewaczka": ["DORYMENA"],
+    "Lokaj1/Muzyk1/Krawczyk1": ["LOKAJ I", "KRAWCZYK I"],
+    "Lokaj2/Muzyk2": ["LOKAJ II"],
+    "Muzyk3/Krawczyk2": ["KRAWCZYK II"],
+    "Dorymena/śpiewaczka": ["DORYMENA", "ŚPIEWACZKA"],
     "Moliere/Nauczyciel Filozofii": ["MOLIER", "NAUCZYCIEL FILOZOFII"],
     "Kleont/Malarz": ["KLEONT"],
     "Covielle/Manekin": ["COVIELLE"],
@@ -49,13 +49,17 @@ COMBINED_CHARACTERS = {
     "LOKAJ I I LOKAJ II": ["LOKAJ I", "LOKAJ II"],
     "LUCYLLA I MICHASIA": ["LUCYLLA", "MICHASIA"],
     "PANI JOURDAIN I MICHASIA": ["PANI JOURDAIN", "MICHASIA"],
-    "NAUCZYCIELE": [
+    "NAUCZYCIEL MUZYKI I NAUCZYCIEL TAŃCA I NAUCZYCIEL FECHTUNKU": [
         "NAUCZYCIEL MUZYKI",
         "NAUCZYCIEL TAŃCA",
         "NAUCZYCIEL FECHTUNKU",
-        "NAUCZYCIEL FILOZOFII",
     ],
-    "CZELADNICY": ["CZELADNIK I", "CZELADNIK II"],
+    "NAUCZYCIEL MUZYKI, NAUCZYCIEL TAŃCA I NAUCZYCIEL FECHTUNKU": [
+        "NAUCZYCIEL MUZYKI",
+        "NAUCZYCIEL TAŃCA",
+        "NAUCZYCIEL FECHTUNKU",
+    ],
+    "KRAWCZYK I I KRAWCZYK II": ["KRAWCZYK I", "KRAWCZYK II"],
     "JOURDAIN": ["PAN JOURDAIN"],
-    "LOKAJ II (NIE MA?!)": ["LOKAJ II"],
+    "ŚPIEWACZKA": ["DORYMENA"],
 }
