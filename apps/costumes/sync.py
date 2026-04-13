@@ -206,6 +206,8 @@ def build_properties(person_id, person_name, member_data, photo_url=None):
 
 
 def sync():
+    from concurrent.futures import ThreadPoolExecutor
+
     notion = NotionAuth.get_client()
 
     cast_people = get_cast_people(notion)
@@ -217,10 +219,10 @@ def sync():
     drive_photos = get_existing_drive_photos(drive, folder_id)
     print(f"Found {len(drive_photos)} existing photos on Drive")
 
-    created = 0
-    updated = 0
-    errors = 0
+    # Phase 1: Resolve photo URLs (sequential — Drive API not thread-safe)
+    person_tasks = []
     active_filenames = set()
+    new_photos = 0
 
     for pid, account_name in cast_people.items():
         member = members_data.get(pid, {})
@@ -234,33 +236,60 @@ def sync():
             active_filenames.add(drive_filename)
 
             try:
-                # Delete old version if exists (photo may have changed)
                 if drive_filename in drive_photos:
-                    delete_drive_file(drive, drive_photos[drive_filename])
-
-                image_bytes = download_image(source_photo)
-                file_id, photo_url = upload_photo_to_drive(
-                    drive, folder_id, image_bytes, drive_filename
-                )
+                    # Photo already on Drive — reuse URL
+                    file_id = drive_photos[drive_filename]
+                    photo_url = f"https://lh3.googleusercontent.com/d/{file_id}"
+                else:
+                    # New/changed photo — download and upload
+                    image_bytes = download_image(source_photo)
+                    file_id, photo_url = upload_photo_to_drive(
+                        drive, folder_id, image_bytes, drive_filename
+                    )
+                    new_photos += 1
             except Exception as e:
                 print(f"  Photo transfer failed for {name}: {e}")
 
         props = build_properties(pid, name, member, photo_url)
+        person_tasks.append((pid, name, props))
 
+    if new_photos:
+        print(f"Uploaded {new_photos} new photos, reused {len(active_filenames) - new_photos}")
+    else:
+        print(f"All {len(active_filenames)} photos reused from Drive")
+
+    # Phase 2: Update Notion pages (parallel — httpx client is thread-safe)
+    created = 0
+    updated = 0
+    errors = 0
+
+    def _update_page(task):
+        pid, name, props = task
         try:
             if pid in existing:
                 notion.pages.update(page_id=existing[pid], properties=props)
-                print(f"  Updated: {name}")
-                updated += 1
+                return "updated", name
             else:
                 notion.pages.create(
                     parent={"database_id": AKTORZY_DATABASE_ID},
                     properties=props,
                 )
-                print(f"  Created: {name}")
-                created += 1
+                return "created", name
         except Exception as e:
-            print(f"  Failed: {name}: {e}")
+            return "error", f"{name}: {e}"
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(_update_page, person_tasks))
+
+    for status, name in results:
+        if status == "created":
+            print(f"  Created: {name}")
+            created += 1
+        elif status == "updated":
+            print(f"  Updated: {name}")
+            updated += 1
+        else:
+            print(f"  Failed: {name}")
             errors += 1
 
     # Remove people no longer in cast (with safety check)

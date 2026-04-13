@@ -1088,16 +1088,19 @@ def sync():
     print(f"  {len(roles)} roles in Obsady")
     role_map = build_role_character_map(roles, all_chars)
 
-    # 3. Generate PDFs
+    # 3. Generate PDFs and upload (parallel generation, serialized upload)
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
     register_fonts()
     drive = get_drive_service()
     folder_id = get_or_create_folder(drive)
+    _drive_lock = threading.Lock()
 
-    role_files = []
-    generated = 0
+    # Prepare tasks — filtering is fast, do it here to report skips immediately
+    pdf_tasks = []
     skipped = 0
 
-    # --- Actor scripts ---
     for role in sorted(roles):
         if role in TECHNICAL_ROLES:
             continue
@@ -1114,32 +1117,45 @@ def sync():
             skipped += 1
             continue
 
-        pdf_bytes = generate_actor_pdf(role, filtered)
-        filename = f"scenariusz-{sanitize_filename(role)}.pdf"
-        file_id, view_url = upload_pdf(drive, folder_id, pdf_bytes, filename)
-        role_files.append((role, view_url, filename))
-        print(f"  Generated: {role} ({own_count} speeches)")
-        generated += 1
+        pdf_tasks.append(("actor", role, filtered, own_count))
 
-    # --- Technical script ---
     tech_filtered = filter_for_technical(elements)
     tech_cues = sum(1 for e in tech_filtered if e[0] in ("OWN_MUSIC", "OWN_LIGHTING"))
     if tech_cues > 0:
-        pdf_bytes = generate_technical_pdf(tech_filtered)
-        filename = "scenariusz-techniczny.pdf"
-        file_id, view_url = upload_pdf(drive, folder_id, pdf_bytes, filename)
-        role_files.append(("Scenariusz techniczny", view_url, filename))
-        print(f"  Generated: Technical ({tech_cues} cues)")
-        generated += 1
+        pdf_tasks.append(("technical", "Technical", tech_filtered, tech_cues))
 
-    # --- General script ---
     gen_filtered = filter_for_general(elements)
-    pdf_bytes = generate_general_pdf(gen_filtered)
-    filename = "scenariusz-ogolny.pdf"
-    file_id, view_url = upload_pdf(drive, folder_id, pdf_bytes, filename)
-    role_files.append(("Scenariusz ogolny", view_url, filename))
-    print(f"  Generated: General script")
-    generated += 1
+    pdf_tasks.append(("general", "General script", gen_filtered, 0))
+
+    def _process_pdf(task):
+        kind, name, elems, count = task
+        if kind == "actor":
+            pdf_bytes = generate_actor_pdf(name, elems)
+            filename = f"scenariusz-{sanitize_filename(name)}.pdf"
+            label = f"{name} ({count} speeches)"
+            role_name = name
+        elif kind == "technical":
+            pdf_bytes = generate_technical_pdf(elems)
+            filename = "scenariusz-techniczny.pdf"
+            label = f"Technical ({count} cues)"
+            role_name = "Scenariusz techniczny"
+        else:
+            pdf_bytes = generate_general_pdf(elems)
+            filename = "scenariusz-ogolny.pdf"
+            label = "General script"
+            role_name = "Scenariusz ogolny"
+        with _drive_lock:
+            _, view_url = upload_pdf(drive, folder_id, pdf_bytes, filename)
+        return role_name, view_url, filename, label
+
+    role_files = []
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for result in pool.map(_process_pdf, pdf_tasks):
+            role_name, view_url, filename, label = result
+            role_files.append((role_name, view_url, filename))
+            print(f"  Generated: {label}")
+
+    generated = len(role_files)
 
     # 4. Update Notion output page
     print("Updating Notion output page...")
