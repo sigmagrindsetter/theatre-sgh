@@ -47,10 +47,20 @@ def main():
             print()
 
     failed = [n for n, c in results.items() if c != 0]
+    succeeded = [n for n, c in results.items() if c == 0]
     if failed:
-        print(f"FAILED: {', '.join(failed)}")
+        # Annotate failures as warnings in GitHub Actions so they're visible
+        # but don't fail the whole workflow
+        for name in failed:
+            print(f"::warning::Sync job '{name}' failed")
+        print(f"\nFAILED: {', '.join(failed)}")
+        if succeeded:
+            print(f"OK: {', '.join(succeeded)}")
+    else:
+        print("All jobs completed successfully.")
+    # Only fail the workflow if ALL jobs failed
+    if not succeeded:
         sys.exit(1)
-    print("All jobs completed successfully.")
 
 
 if __name__ == "__main__":
