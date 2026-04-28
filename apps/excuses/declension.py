@@ -67,6 +67,9 @@ def _gen_female_surname(name: str) -> str:
         return name[:-1] + "iej"
     if name.endswith("dzka"):
         return name[:-1] + "iej"
+    if name.endswith("a"):
+        # Other -a surnames decline like feminine -a nouns: Grzęda→Grzędy, Wojda→Wojdy, Sikora→Sikory
+        return _gen_female_first(name)
     # Consonant-ending female surnames are unchanged: Truchel, Duk, Tomczyk
     return name
 
@@ -104,6 +107,8 @@ def _acc_female_surname(name: str) -> str:
         return name[:-1] + "ą"
     if name.endswith("dzka"):
         return name[:-1] + "ą"
+    if name.endswith("a"):
+        return _acc_female_first(name)  # Grzęda→Grzędę, Wojda→Wojdę
     return name                   # consonant endings unchanged
 
 
