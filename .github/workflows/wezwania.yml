@@ -1,0 +1,56 @@
+name: Wezwania składkowe
+
+# Klikana ręcznie funkcja: wysyła wezwania do uregulowania salda składkowego
+# do wszystkich osób z dodatnim saldem (zaległością).
+#
+# Uruchomienie: zakładka Actions → "Wezwania składkowe" → "Run workflow".
+#
+# Tryby:
+#   dry-run — tylko wypisuje listę osób i kwoty, NIC nie wysyła
+#   test    — wysyła wszystkie wezwania na adres testowy (ss114165@student.sgh.waw.pl)
+#   live    — wysyła do każdej osoby na jej adres e-mail z bazy Członków
+#
+# Wymagany sekret repozytorium: GMAIL_APP_PASSWORD
+#   (hasło aplikacji Gmail dla konta teatr.sgh@gmail.com — patrz README/instrukcja).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Tryb wysyłki'
+        type: choice
+        options:
+          - dry-run
+          - test
+          - live
+        default: dry-run
+      limit:
+        description: 'Limit liczby osób (puste = wszystkie)'
+        type: string
+        default: ''
+
+jobs:
+  wezwania:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system fonts
+        run: sudo apt-get install -y --no-install-recommends fonts-liberation
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Wyślij wezwania
+        env:
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python apps/finance/wezwania.py "${{ inputs.mode }}" "${{ inputs.limit }}"
