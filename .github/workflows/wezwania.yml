@@ -24,8 +24,8 @@ on:
           - test
           - live
         default: dry-run
-      limit:
-        description: 'Limit liczby osób (puste = wszystkie)'
+      filtr:
+        description: 'Liczba = limit osób; tekst = fragment imienia/nazwiska (puste = wszyscy)'
         type: string
         default: ''
 
@@ -53,4 +53,4 @@ jobs:
         env:
           NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python apps/finance/wezwania.py "${{ inputs.mode }}" "${{ inputs.limit }}"
+        run: python apps/finance/wezwania.py "${{ inputs.mode }}" "${{ inputs.filtr }}"

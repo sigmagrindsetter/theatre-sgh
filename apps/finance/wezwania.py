@@ -6,12 +6,13 @@ Funkcja klikana ręcznie w GitHub Actions (workflow_dispatch → wezwania.yml).
 Dla każdej osoby z dodatnim saldem (zaległość > 0) generuje pseudodokument PDF
 (snapshot z chwili uruchomienia) i wysyła go mailem.
 
-Argumenty:  python wezwania.py <tryb> [<limit>]
+Argumenty:  python wezwania.py <tryb> [<filtr>]
   tryb:
     dry-run  — generuje i wypisuje, NIC nie wysyła (nie wymaga hasła)
     test     — wysyła WSZYSTKIE wezwania na jeden adres testowy
     live     — wysyła do każdej osoby na jej adres z bazy Członków
-  limit (opcjonalnie) — przetwórz tylko pierwszych N osób
+  filtr (opcjonalnie) — liczba: przetwórz tylko pierwszych N osób;
+                        tekst: tylko osoby z tym fragmentem w imieniu/nazwisku
 
 Sekrety (env):
   NOTION_API_TOKEN    — token Notion (jest już w repo)
@@ -120,9 +121,7 @@ def build_message(account, generated_str, to_addr, test_for=None):
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "dry-run"
-    limit = None
-    if len(sys.argv) > 2 and sys.argv[2].strip():
-        limit = int(sys.argv[2].strip())
+    filtr = sys.argv[2].strip() if len(sys.argv) > 2 else ""
     if mode not in ("dry-run", "test", "live"):
         print(f"Nieznany tryb: {mode!r}. Użyj: dry-run | test | live")
         return 1
@@ -135,8 +134,12 @@ def main():
         (a for a in data["accounts"].values()
          if a["member_id"] and a["balance_due"] > 0.005),
         key=lambda a: a["name"])
-    if limit is not None:
-        debtors = debtors[:limit]
+    if filtr:
+        if filtr.isdigit():
+            debtors = debtors[:int(filtr)]
+        else:
+            debtors = [a for a in debtors
+                       if filtr.lower() in a["name"].lower()]
 
     total_debt = sum(a["balance_due"] for a in debtors)
     print(f"Tryb: {mode}")
