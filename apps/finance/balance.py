@@ -68,6 +68,12 @@ def compute_unpaid(obligations, transactions):
             else:
                 unpaid.append({**o, "kwota": round(o["kwota"] - pool, 2)})
                 pool = 0
+        if pool > 0.005:
+            unpaid.append({
+                "id": None, "opis": "Nadpłata", "typ": "Nadpłata", "date": None,
+                "member_id": None, "kwota": round(pool, 2),
+                "kierunek": BUDZET_OSOBA if kier == OSOBA_BUDZET else OSOBA_BUDZET,
+            })
     return unpaid
 
 
