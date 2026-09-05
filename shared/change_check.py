@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 CACHE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".last_sync")
 
@@ -17,13 +18,31 @@ def _write_cache(data):
         json.dump(data, f, indent=2)
 
 
+def _code_version():
+    """Cache entries are only valid for the code that wrote them, so a deploy
+    forces one regeneration even when Notion data has not changed."""
+    sha = os.environ.get("GITHUB_SHA")
+    if not sha:
+        try:
+            sha = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=os.path.dirname(CACHE_FILE),
+                text=True, stderr=subprocess.DEVNULL).strip()
+        except (OSError, subprocess.CalledProcessError):
+            sha = None
+    return sha
+
+
 def get_cached_time(key):
-    return _read_cache().get(key)
+    data = _read_cache()
+    if data.get("_code") != _code_version():
+        return None
+    return data.get(key)
 
 
 def set_cached_time(key, timestamp):
     data = _read_cache()
     data[key] = timestamp
+    data["_code"] = _code_version()
     _write_cache(data)
 
 
