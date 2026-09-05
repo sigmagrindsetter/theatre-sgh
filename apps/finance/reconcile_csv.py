@@ -105,7 +105,7 @@ def main():
     print("1. SKŁADKI — brakujące transakcje miesięczne")
     print("=" * 64)
     for mid, name, period in SKLADKI:
-        y, m = int(period[:4]), int(period[5:7])
+        m = int(period[5:7])
         opis = f"Składka {MONTHS_PL[m]} – {name}"
         if (mid, period) not in zob_skladka:
             print(f"  ! POMINIĘTO {opis}: brak zobowiązania dla {period}")

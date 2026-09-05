@@ -357,7 +357,7 @@ def update_notion_file(notion, parent_page_id, drive_url):
 
     if file_block_id:
         notion.blocks.delete(block_id=file_block_id)
-        print(f"  Deleted old file block")
+        print("  Deleted old file block")
 
     new_block = {
         "type": "file",
@@ -372,7 +372,7 @@ def update_notion_file(notion, parent_page_id, drive_url):
         kwargs["after"] = insert_after_id
 
     notion.blocks.children.append(**kwargs)
-    print(f"  Created new file block")
+    print("  Created new file block")
 
 
 def main():

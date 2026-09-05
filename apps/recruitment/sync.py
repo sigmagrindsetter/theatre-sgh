@@ -30,7 +30,7 @@ class RecruitmentSync(BaseSyncService):
     }
 
     def get_active_evaluators(self):
-        print(f"\nFetching active evaluators from database...")
+        print("\nFetching active evaluators from database...")
 
         try:
             response = self.notion_client.databases.query(
@@ -67,7 +67,7 @@ class RecruitmentSync(BaseSyncService):
             return []
 
     def get_existing_records(self):
-        print(f"Checking existing evaluator-candidate pairs in Notion...")
+        print("Checking existing evaluator-candidate pairs in Notion...")
 
         try:
             existing = {}
@@ -193,7 +193,7 @@ class RecruitmentSync(BaseSyncService):
         for record in records:
             candidate_name_raw = record.get("Imię i nazwisko:", "Unknown")
             if not candidate_name_raw or candidate_name_raw == "Unknown":
-                print(f"  ⚠ Skipping record without name")
+                print("  ⚠ Skipping record without name")
                 continue
 
             candidate_name = str(candidate_name_raw).strip()
@@ -218,7 +218,7 @@ class RecruitmentSync(BaseSyncService):
                     print(f"  ✗ Failed: {candidate_name} × {evaluator['name']}: {e}")
                     error_count += 1
 
-        print(f"\nSync completed:")
+        print("\nSync completed:")
         print(f"  {created_count} evaluator-candidate pairs created")
         print(f"  {skipped_count} pairs already existed (skipped)")
         print(f"  {error_count} errors")

@@ -94,7 +94,7 @@ def cleanup_duplicates(force=False):
             delete = sorted_records[1:]
 
             ocena_str = f"Ocena: {keep['ocena']}" if keep['ocena'] else "No Ocena"
-            kom_str = f"Komentarz: Yes" if keep['komentarz'] else "No Komentarz"
+            kom_str = "Komentarz: Yes" if keep['komentarz'] else "No Komentarz"
             print(f"  ✓ Keeping: {keep['id'][:8]}... ({ocena_str}, {kom_str})")
 
             for rec in delete:
