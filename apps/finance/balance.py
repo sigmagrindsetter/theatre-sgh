@@ -57,7 +57,7 @@ def is_due(record):
     return bool(record["date"]) and record["date"] <= TODAY
 
 
-def compute_unpaid(obligations, transactions):
+def compute_unpaid(obligations, transactions, credit=True):
     unpaid = []
     for kier in (OSOBA_BUDZET, BUDZET_OSOBA):
         obs = sorted((o for o in obligations if o["kierunek"] == kier), key=_sortkey)
@@ -68,7 +68,7 @@ def compute_unpaid(obligations, transactions):
             else:
                 unpaid.append({**o, "kwota": round(o["kwota"] - pool, 2)})
                 pool = 0
-        if pool > 0.005:
+        if credit and pool > 0.005:
             unpaid.append({
                 "id": None, "opis": "Nadpłata", "typ": "Nadpłata", "date": None,
                 "member_id": None, "kwota": round(pool, 2),
@@ -116,8 +116,8 @@ def load(client):
         a_zob = sorted((r for r in zob if r["member_id"] == aid), key=_sortkey)
         a_trn = sorted((r for r in trn if r["member_id"] == aid), key=_sortkey)
         due = [o for o in a_zob if is_due(o)]
-        unpaid_due = compute_unpaid(due, a_trn)
-        unpaid_all = compute_unpaid(a_zob, a_trn)
+        unpaid_due = compute_unpaid(due, a_trn, credit=aid is not None)
+        unpaid_all = compute_unpaid(a_zob, a_trn, credit=aid is not None)
         accounts[aid] = {
             "member_id": aid,
             "name": (members.get(aid) or "Bez przypisanej osoby"),
