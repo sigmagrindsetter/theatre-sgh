@@ -1,28 +1,13 @@
-"""
-Polish name declension heuristics for formal excuse documents.
-
-Covers the most common patterns for:
-- Gender detection from first name
-- Genitive case (dopełniacz) for student names: "nieobecności Pana Filipa Musiałowskiego"
-- Accusative case (biernik) for lecturer names: "prowadzonych przez dr Emilię Tomczyk"
-- Nominative → instrumental (narzędnik) for first word of reason text
-"""
-
 # Male first names that end in -a (exceptions to the female heuristic)
 _MALE_NAMES_A = {"Kuba", "Barnaba", "Kosma", "Bonawentura", "Jarema", "Saba"}
 
 
 def detect_gender(first_name: str) -> str:
-    """Return 'f' or 'm' based on the first name ending."""
     name = first_name.strip()
     if name in _MALE_NAMES_A:
         return "m"
     return "f" if name.endswith("a") else "m"
 
-
-# ---------------------------------------------------------------------------
-# Genitive (dopełniacz) – used for the student: "Pana Filipa Musiałowskiego"
-# ---------------------------------------------------------------------------
 
 def _gen_male_first(name: str) -> str:
     if name.endswith("ek"):
@@ -75,15 +60,10 @@ def _gen_female_surname(name: str) -> str:
 
 
 def genitive_full_name(first: str, last: str, gender: str) -> str:
-    """Decline a full name to genitive case."""
     if gender == "m":
         return f"{_gen_male_first(first)} {_gen_male_surname(last)}"
     return f"{_gen_female_first(first)} {_gen_female_surname(last)}"
 
-
-# ---------------------------------------------------------------------------
-# Accusative (biernik) – used for lecturer: "prowadzonych przez dr Emilię Tomczyk"
-# ---------------------------------------------------------------------------
 
 def _acc_male_first(name: str) -> str:
     # Masculine animate accusative = genitive
@@ -112,12 +92,7 @@ def _acc_female_surname(name: str) -> str:
     return name                   # consonant endings unchanged
 
 
-# ---------------------------------------------------------------------------
-# Lecturer helper
-# ---------------------------------------------------------------------------
-
 def parse_lecturer(text: str):
-    """Split 'dr hab. prof. SGH Emilia Tomczyk' → (title, first, last)."""
     parts = text.strip().split()
     if len(parts) >= 2:
         return " ".join(parts[:-2]), parts[-2], parts[-1]
@@ -127,7 +102,6 @@ def parse_lecturer(text: str):
 
 
 def decline_lecturer_accusative(text: str) -> str:
-    """Decline the lecturer string to accusative for 'prowadzonych przez …'."""
     title, first, last = parse_lecturer(text)
     if not first:
         return text  # can't parse, return as-is
@@ -140,8 +114,6 @@ def decline_lecturer_accusative(text: str) -> str:
         first_d = _acc_female_first(first)
         last_d = _acc_female_surname(last) if last else ""
 
-    # With academic title: just title + declined name
-    # Without title: add Pana/Panią
     if title:
         parts = [title, first_d, last_d]
     else:
@@ -150,10 +122,6 @@ def decline_lecturer_accusative(text: str) -> str:
 
     return " ".join(p for p in parts if p)
 
-
-# ---------------------------------------------------------------------------
-# Reason: nominative → instrumental (first word only)
-# ---------------------------------------------------------------------------
 
 def _to_instrumental(word: str) -> str:
     """Convert a single Polish noun from nominative to instrumental (heuristic).
@@ -168,18 +136,12 @@ def _to_instrumental(word: str) -> str:
         return w[:-1] + "em"     # przygotowanie→przygotowaniem
     if w.endswith("o"):
         return w[:-1] + "em"     # uczestnictwo→uczestnictwem
-    # Ends in consonant (not a vowel)
     if w and w[-1] not in "aeioóuyąę":
         return w + "em"          # udział→udziałem, występ→występem
     return w
 
 
 def format_reason_instrumental(reason: str) -> str:
-    """Convert a reason phrase so the first word is in instrumental case.
-
-    Input:  'Przygotowanie występu na festiwalu'
-    Output: 'przygotowaniem występu na festiwalu'
-    """
     words = reason.split(None, 1)
     if not words:
         return reason

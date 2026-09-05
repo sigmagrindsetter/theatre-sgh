@@ -1,12 +1,3 @@
-"""
-Generowanie dokumentów PDF dla Budżetu nieoficjalnego:
-  - render_history_pdf  — historia konta osoby (do raportu Stan konta)
-  - render_wezwanie_pdf — wezwanie do uregulowania składek (do maila):
-                          kwota do zapłaty + zaległe pozycje + PEŁNA historia konta
-
-Oba przyjmują "konto" w formacie z balance.py.
-"""
-
 import io
 import os
 
@@ -105,7 +96,6 @@ def _styles():
 
 
 def _records_table(rows, st):
-    """rows: lista rekordów (z balance.py). Zwraca platypus Table."""
     head = [Paragraph(h, st["cellb"]) for h in ("Data", "Opis", "Typ", "Kwota")]
     data = [head]
     for r in rows:
@@ -166,7 +156,6 @@ def _summary_table(account, st):
 
 
 def _history_flowables(account, st):
-    """Sekcja pełnej historii konta: tabela zobowiązań + tabela transakcji."""
     out = [Paragraph(f"Zobowiązania ({len(account['zobowiazania'])})", st["h2"])]
     if account["zobowiazania"]:
         out.append(_records_table(account["zobowiazania"], st))
@@ -191,7 +180,6 @@ def _build(story):
 
 
 def render_history_pdf(account, generated_str):
-    """PDF z pełną historią konta jednej osoby."""
     _register_fonts()
     st = _styles()
     story = [
@@ -210,7 +198,6 @@ def render_history_pdf(account, generated_str):
 
 
 def render_wezwanie_pdf(account, generated_str):
-    """PDF wezwania: kwota, zaległe pozycje, objaśnienie i PEŁNA historia konta."""
     _register_fonts()
     st = _styles()
     owed = [u for u in account["unpaid_due"] if u["kierunek"] == "Osoba → Budżet"]
@@ -232,7 +219,6 @@ def render_wezwanie_pdf(account, generated_str):
             "oraz pełna historia konta.", st["body"]),
     ]
 
-    # --- Zestawienie zaległych pozycji ---
     head = [Paragraph(h, st["cellb"]) for h in
             ("Termin", "Tytuł", "Typ", "Kwota")]
     data = [head]
@@ -270,7 +256,6 @@ def render_wezwanie_pdf(account, generated_str):
     story.append(t)
     story.append(Spacer(1, 12))
 
-    # --- Objaśnienie wyliczenia + klauzula o sekretarzu ---
     note = Table([[Paragraph(
         "<b>Jak czytamy to wezwanie.</b> Wpłaty zaliczane są na poczet "
         "zobowiązań w kolejności terminów. Jeżeli któreś składki zostały "
@@ -291,7 +276,6 @@ def render_wezwanie_pdf(account, generated_str):
     story.append(note)
     story.append(Spacer(1, 12))
 
-    # --- Dane do wpłaty ---
     pay = Table([[Paragraph(
         f"<b>Dane do wpłaty</b><br/>"
         f"Odbiorca: {SECRETARY_NAME} (sekretarz)<br/>"
@@ -308,7 +292,6 @@ def render_wezwanie_pdf(account, generated_str):
     ]))
     story.append(pay)
 
-    # --- Pełna historia konta ---
     story.append(Paragraph("Pełna historia konta", st["h2"]))
     story.append(_summary_table(account, st))
     story += _history_flowables(account, st)

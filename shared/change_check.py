@@ -1,11 +1,3 @@
-"""
-Change detection for Notion sync scripts.
-
-Uses a local JSON file to track last-synced timestamps.
-In GitHub Actions, this file is persisted between runs via actions/cache.
-Locally, it persists in the working directory.
-"""
-
 import json
 import os
 import time
@@ -52,10 +44,6 @@ def _retry_notion_call(fn, retries=3, backoff=2):
 
 
 def check_page_changed(notion, page_id, cache_key):
-    """Check if a Notion page has been modified since last sync.
-
-    Returns (changed: bool, current_timestamp: str).
-    """
     page = _retry_notion_call(lambda: notion.pages.retrieve(page_id))
     current = page["last_edited_time"]
     cached = get_cached_time(cache_key)
@@ -66,13 +54,6 @@ def check_page_changed(notion, page_id, cache_key):
 
 
 def check_databases_changed(notion, database_ids, cache_key):
-    """Check if any page in the given databases has been modified since last sync.
-
-    Queries each database for the most recently edited page and compares
-    with the cached timestamp.
-
-    Returns (changed: bool, latest_timestamp: str).
-    """
     latest = None
     for db_id in database_ids:
         result = _retry_notion_call(lambda db=db_id: notion.databases.query(

@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Run all sync jobs in parallel. Single entry point for the scheduled workflow."""
-
 import subprocess
 import sys
 import time
@@ -49,8 +47,6 @@ def main():
     failed = [n for n, c in results.items() if c != 0]
     succeeded = [n for n, c in results.items() if c == 0]
     if failed:
-        # Annotate failures as warnings in GitHub Actions so they're visible
-        # but don't fail the whole workflow
         for name in failed:
             print(f"::warning::Sync job '{name}' failed")
         print(f"\nFAILED: {', '.join(failed)}")

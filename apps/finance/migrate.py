@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""
-One-time migration: populate Zobowiązania and Księga databases with historical data.
-
-Sources:
-- Składki Tracker (ce8e11b7...) → member obligations (Składki od dates, monthly checkboxes)
-- Budget (cd4b06da...) → financial transactions (Składki, Wydatki, Wpływy nadzwyczajne)
-- Members DB (18a3f416...) → active/student status, person mapping
-
-Targets:
-- Zobowiązania (31b3f416-0a37-81e4-98a9-c2be10bc5bce) → monthly obligations per member
-- Księga (31b3f416-0a37-81fa-ae0b-de8c49b1c452) → all financial transactions
-"""
-
 import sys
 import re
 from pathlib import Path
@@ -28,7 +15,6 @@ MEMBERS_DB = "18a3f4160a3780c884bcd88c8e0c49b7"
 ZOBOWIAZANIA_DB = "31b3f4160a3781e498a9c2be10bc5bce"
 KSIEGA_DB = "31b3f4160a3781faae0bde8c49b1c452"
 
-# Generate obligation months up to current month (skip Jul/Aug/Sep)
 def get_obligation_months():
     today = date.today()
     current_month = date(today.year, today.month, 1)
@@ -64,7 +50,6 @@ def query_all_pages(client, database_id, **kwargs):
 
 
 def get_tracker_data(client):
-    """Get tracker rows: {tracker_page_id: {member_page_id, name, skladki_od}}"""
     pages = query_all_pages(client, TRACKER_DB)
     tracker = {}
     for page in pages:
@@ -92,7 +77,6 @@ def get_tracker_data(client):
 
 
 def get_members_data(client):
-    """Get members: {member_page_id: {name, active, student_status}}"""
     pages = query_all_pages(client, MEMBERS_DB)
     members = {}
     for page in pages:
@@ -104,8 +88,6 @@ def get_members_data(client):
 
         active = props.get("Aktywny", {}).get("checkbox", False)
 
-        # Check "Rola w organizacji" or similar field for student status
-        # From context: "student członek organizacji" - check select/multi-select
         rola = props.get("Rola w organizacji", {})
         rola_val = ""
         if rola.get("type") == "select" and rola.get("select"):
@@ -123,7 +105,6 @@ def get_members_data(client):
 
 
 def get_budget_data(client):
-    """Get all budget entries."""
     pages = query_all_pages(client, BUDGET_DB)
     entries = []
     for page in pages:
@@ -159,7 +140,6 @@ def get_budget_data(client):
 
 
 def create_zobowiazania(client, tracker, members):
-    """Create obligation records for each member for each applicable month."""
     created = 0
     errors = 0
 
@@ -200,8 +180,6 @@ def create_zobowiazania(client, tracker, members):
 
 
 def extract_person_from_opis(opis):
-    """Try to extract person name from budget description like 'Składka listopad – Hryciuk Dymitr'."""
-    # Pattern: anything – Name or anything - Name
     match = re.search(r'[–\-]\s*(.+)', opis)
     if match:
         return match.group(1).strip()
@@ -209,18 +187,14 @@ def extract_person_from_opis(opis):
 
 
 def create_ksiega(client, budget_entries, tracker, members):
-    """Create Księga records from budget entries."""
-    # Build tracker_page_id → member_page_id mapping
     tracker_to_member = {}
     for tid, tdata in tracker.items():
         if tdata["member_id"]:
             tracker_to_member[tid] = tdata["member_id"]
 
-    # Build name → member_page_id for expense attribution
     name_to_member = {}
     for mid, mdata in members.items():
         name_to_member[mdata["name"].lower()] = mid
-    # Also add tracker names (Nazwisko Imię format)
     for tid, tdata in tracker.items():
         if tdata["member_id"]:
             name_to_member[tdata["name"].lower()] = tdata["member_id"]
@@ -242,7 +216,6 @@ def create_ksiega(client, budget_entries, tracker, members):
             entry_date = entry["data_oplacenia"]
         elif typ == "Wydatek":
             kierunek = "Wypływ"
-            # Try to find person from description
             person_name = extract_person_from_opis(entry["opis"])
             member_id = None
             if person_name:

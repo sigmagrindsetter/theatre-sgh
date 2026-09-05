@@ -1,11 +1,3 @@
-"""
-Generate formal excuse letter PDFs on the SGH prorektor's letterhead.
-
-Uses pdfrw to render the template PDF as a native background Form XObject.
-The template is scaled 1.21× and shifted up 87pt (anchored on logo top)
-so that letterhead elements match the reference signed document exactly.
-"""
-
 import io
 import os
 from datetime import date
@@ -85,7 +77,6 @@ def _draw(c, text, style, x, y, width, max_h=200):
 def generate_pdf(data: dict) -> bytes:
     _register_fonts()
 
-    # --- Prepare text ---
     first, *rest = data["name"].split(None, 1)
     last = rest[0] if rest else ""
     gender = detect_gender(first)
@@ -112,22 +103,17 @@ def generate_pdf(data: dict) -> bytes:
     )
     reason_line = f"Nieobecność była spowodowana {reason_instr}."
 
-    # --- Geometry ---
-    PAGE_W, PAGE_H = A4  # 595.27, 841.89
+    PAGE_W, PAGE_H = A4
     LEFT = 70
     RIGHT = PAGE_W - 70
     FULL_W = RIGHT - LEFT
 
-    # --- Load template ---
     tmpl_reader = PdfrwReader(str(TEMPLATE_PDF))
     tmpl_xobj = pagexobj(tmpl_reader.pages[0])
 
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
 
-    # ---------------------------------------------------------------
-    # 1) Draw scaled + shifted template background.
-    #
     # Reference measurements (from the signed Truchel document):
     #   Logo top ≈ y 797   Logo bottom ≈ y 688   (height ≈ 109pt)
     #   "Prorektor" ≈ y 668    Footer ≈ y 59
@@ -137,7 +123,6 @@ def generate_pdf(data: dict) -> bytes:
     #
     # Transform: scale 1.21× anchored at logo top (140, 710) + shift up 87pt
     # This maps:  logo → y 688-797,  "Prorektor" → y 664,  footer → y ~57
-    # ---------------------------------------------------------------
     SCALE = 1.21
     AX, AY = 140, 710  # anchor = logo top
     SHIFT_Y = 87        # upward shift
@@ -151,14 +136,10 @@ def generate_pdf(data: dict) -> bytes:
     c.doForm(makerl(c, tmpl_xobj))
     c.restoreState()
 
-    # 2) White fill: cover template body text + footer.
-    #    After transform, "Prorektor" label is at y ≈ 664.
-    #    Preserve everything above y = 655.
     c.setFillColorRGB(1, 1, 1)
-    c.rect(0, 0, PAGE_W, 655, fill=1, stroke=0)            # body: y 0→655
-    c.rect(280, 655, PAGE_W - 280, 190, fill=1, stroke=0)   # right of logo: y 655→845
+    c.rect(0, 0, PAGE_W, 655, fill=1, stroke=0)
+    c.rect(280, 655, PAGE_W - 280, 190, fill=1, stroke=0)
 
-    # 3) Redraw footer at the reference position (y ≈ 55-65).
     c.setFont(_FONT_REGULAR, 7)
     c.setFillColor("#00778a")
     c.drawString(105, 63, "www.sgh.waw.pl")
@@ -170,7 +151,6 @@ def generate_pdf(data: dict) -> bytes:
     c.drawString(192, 54,
                  "tel.: +48 22 564 98 26, rektorat@sgh.waw.pl")
 
-    # --- Styles ---
     s_date = ParagraphStyle("d", fontName=_FONT_REGULAR, fontSize=12,
                             alignment=TA_RIGHT, leading=16)
     s_title = ParagraphStyle("t", fontName=_FONT_BOLD, fontSize=14,
@@ -183,35 +163,26 @@ def generate_pdf(data: dict) -> bytes:
                            alignment=TA_LEFT, leading=16)
     s_sig_b = ParagraphStyle("sb", fontName=_FONT_BOLD, fontSize=12,
                              alignment=TA_LEFT, leading=16)
-    # Right-aligned variants for the prorektor block
     s_sig_r = ParagraphStyle("sr", fontName=_FONT_REGULAR, fontSize=12,
                              alignment=TA_RIGHT, leading=16)
     s_sig_br = ParagraphStyle("sbr", fontName=_FONT_BOLD, fontSize=12,
                               alignment=TA_RIGHT, leading=16)
 
-    # --- Draw content (matched to reference positions) ---
     y = 635
 
-    # Date — right-aligned  (ref ≈ y 609)
     y -= _draw(c, date_line, s_date, LEFT, y, FULL_W) + 30
 
-    # Title — centred, bold  (ref ≈ y 561)
     y -= _draw(c, title, s_title, LEFT, y, FULL_W) + 25
 
-    # Body — justified  (ref ≈ y 521)
     y -= _draw(c, body, s_body, LEFT, y, FULL_W, 400) + 8
 
-    # Reason — justified
     y -= _draw(c, reason_line, s_body, LEFT, y, FULL_W, 200) + 28
 
-    # "Z poważaniem" — right-aligned
     y -= _draw(c, "Z poważaniem", s_right, LEFT, y, FULL_W) + 95
 
-    # Prorektor signature — RIGHT-aligned (flush to right margin)
     y -= _draw(c, PROREKTOR_LINE1, s_sig_br, LEFT, y, FULL_W)
     y -= _draw(c, PROREKTOR_LINE2, s_sig_r, LEFT, y, FULL_W) + 65
 
-    # President signature — LEFT-aligned
     y -= _draw(c, PRESIDENT_NAME, s_sig_b, LEFT, y, FULL_W)
     _draw(c, "Prezes Teatru SGH", s_sig, LEFT, y, FULL_W)
 

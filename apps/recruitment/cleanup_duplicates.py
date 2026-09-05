@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""
-Remove duplicate evaluator-candidate pairs from Notion
-Keeps records with Ocena first, then Komentarz, then oldest record
-"""
-
 import sys
 import argparse
 from pathlib import Path
 from collections import defaultdict
 
-# Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -18,14 +12,12 @@ from config import DATABASE_ID
 
 
 def cleanup_duplicates(force=False):
-    """Find and remove duplicate evaluator-candidate pairs"""
     notion = NotionAuth.get_client()
 
     print(f"\n{'=' * 60}")
     print("Cleaning up duplicate evaluator-candidate pairs")
     print(f"{'=' * 60}\n")
 
-    # Fetch ALL records with pagination
     print("Fetching all records from Notion...")
     all_records = []
     has_more = True
@@ -45,35 +37,29 @@ def cleanup_duplicates(force=False):
 
     print(f"✓ Total records fetched: {len(all_records)}\n")
 
-    # Group records by (candidate_name, evaluator_name)
     groups = defaultdict(list)
 
     for record in all_records:
         props = record['properties']
 
-        # Get candidate name
         name_prop = props.get('Imię i nazwisko', {})
         candidate_name = None
         if name_prop.get('title') and name_prop['title']:
             candidate_name = name_prop['title'][0]['text']['content']
 
-        # Get evaluator
         evaluator_prop = props.get('Oceniający', {})
         evaluator = None
         if evaluator_prop.get('people') and evaluator_prop['people']:
             evaluator = evaluator_prop['people'][0].get('name')
 
-        # Get Ocena
         ocena_prop = props.get('Ocena', {})
         ocena = ocena_prop.get('number')
 
-        # Get Komentarz
         komentarz_prop = props.get('Komentarz', {})
         komentarz = None
         if komentarz_prop.get('rich_text') and komentarz_prop['rich_text']:
             komentarz = komentarz_prop['rich_text'][0]['text']['content']
 
-        # Get creation time
         created_time = record.get('created_time')
 
         if candidate_name and evaluator:
@@ -89,7 +75,6 @@ def cleanup_duplicates(force=False):
 
     print(f"Found {len(groups)} unique candidate-evaluator pairs")
 
-    # Find duplicates
     duplicates_to_delete = []
 
     for key, records in groups.items():
@@ -97,20 +82,14 @@ def cleanup_duplicates(force=False):
             candidate, evaluator = key
             print(f"\nDuplicate: {candidate} × {evaluator} ({len(records)} records)")
 
-            # Sort by priority:
-            # 1. Has Ocena (number exists)
-            # 2. Has Komentarz (text exists)
-            # 3. Oldest (first created)
             def sort_priority(r):
                 has_ocena = r['ocena'] is not None
                 has_komentarz = bool(r['komentarz'])
                 created = r['created_time']
-                # Return tuple: (has_ocena desc, has_komentarz desc, created asc)
                 return (not has_ocena, not has_komentarz, created)
 
             sorted_records = sorted(records, key=sort_priority)
 
-            # Keep first (highest priority), delete rest
             keep = sorted_records[0]
             delete = sorted_records[1:]
 
@@ -130,7 +109,6 @@ def cleanup_duplicates(force=False):
         print("No duplicates found. Database is clean!")
         return
 
-    # Ask for confirmation (skip if --force flag is used)
     if not force:
         response = input(f"Delete {len(duplicates_to_delete)} duplicate records? (yes/no): ")
 
@@ -140,7 +118,6 @@ def cleanup_duplicates(force=False):
     else:
         print(f"Force mode enabled. Proceeding to delete {len(duplicates_to_delete)} duplicate records...")
 
-    # Delete duplicates
     print("\nDeleting duplicates...")
     deleted_count = 0
 

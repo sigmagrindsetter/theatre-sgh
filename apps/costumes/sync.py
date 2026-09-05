@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-Costumes: Sync cast members' sizes and photos to Aktorzy database.
-
-Reads people from Obsady (cast assignments), looks up their measurements
-and silhouette photo from Members DB, and syncs to the Aktorzy target DB.
-All joined on Notion Person ID.
-
-Photos are uploaded to Google Drive (teatr.sgh@gmail.com) with a direct-view
-URL so they render as images in the Notion table. Photos persist on Drive;
-old versions are replaced on each sync.
-"""
-
 import sys
 import httpx
 from pathlib import Path
@@ -30,7 +18,6 @@ from config import (
 
 
 def query_all_pages(client, database_id, **kwargs):
-    """Paginate through all pages in a database."""
     pages = []
     has_more = True
     next_cursor = None
@@ -46,11 +33,6 @@ def query_all_pages(client, database_id, **kwargs):
 
 
 def get_cast_people(client):
-    """Get unique people from Obsady cast columns. Returns {person_id: person_name}.
-
-    Reads all people-type columns (e.g. 'Obsada Wtoopa', 'Obsada SWT', etc.)
-    so the sync adapts when cast columns are added/renamed per show.
-    """
     pages = query_all_pages(client, OBSADY_DATABASE_ID)
     people = {}
     for page in pages:
@@ -66,7 +48,6 @@ def get_cast_people(client):
 
 
 def get_members_data(client):
-    """Get sizes and photos from Members DB. Returns {person_id: {sizes..., photo_url}}."""
     pages = query_all_pages(client, MEMBERS_DATABASE_ID)
     members = {}
     for page in pages:
@@ -78,7 +59,6 @@ def get_members_data(client):
 
         data = {}
 
-        # Real name from "Imię i Nazwisko" column (not Notion account name)
         name_prop = props.get("Imię i Nazwisko", {}).get("title", [])
         if name_prop:
             data["_full_name"] = name_prop[0]["plain_text"].strip()
@@ -104,7 +84,6 @@ def get_members_data(client):
 
 
 def get_existing_aktorzy(client):
-    """Get existing Aktorzy rows. Returns {person_id: page_id}."""
     pages = query_all_pages(client, AKTORZY_DATABASE_ID)
     existing = {}
     for page in pages:
@@ -114,8 +93,6 @@ def get_existing_aktorzy(client):
     print(f"Found {len(existing)} existing rows in Aktorzy")
     return existing
 
-
-# --- Google Drive helpers for persistent photo hosting ---
 
 def get_drive_service():
     """Get Drive service using teatr.sgh OAuth credentials (has storage quota)."""
@@ -134,7 +111,6 @@ def get_drive_service():
 
 
 def get_existing_drive_photos(drive, folder_id):
-    """Get existing photos in Drive folder. Returns {filename: file_id}."""
     existing = {}
     page_token = None
     while True:
@@ -152,7 +128,6 @@ def get_existing_drive_photos(drive, folder_id):
 
 
 def upload_photo_to_drive(drive, folder_id, image_bytes, filename):
-    """Upload image to Drive, make public, return direct-view URL."""
     from googleapiclient.http import MediaInMemoryUpload
 
     media = MediaInMemoryUpload(image_bytes, mimetype="image/jpeg", resumable=False)
@@ -170,21 +145,16 @@ def upload_photo_to_drive(drive, folder_id, image_bytes, filename):
 
 
 def delete_drive_file(drive, file_id):
-    """Delete a file from Drive."""
     drive.files().delete(fileId=file_id).execute()
 
 
 def download_image(url):
-    """Download image bytes from a URL."""
     resp = httpx.get(url, follow_redirects=True, timeout=30)
     resp.raise_for_status()
     return resp.content
 
 
-# --- Main sync logic ---
-
 def build_properties(person_id, person_name, member_data, photo_url=None):
-    """Build Notion properties dict for a person."""
     props = {
         "Imię i Nazwisko": {"title": [{"text": {"content": person_name}}]},
         "Konto Notion": {"people": [{"id": person_id}]},
@@ -219,7 +189,6 @@ def sync():
     drive_photos = get_existing_drive_photos(drive, folder_id)
     print(f"Found {len(drive_photos)} existing photos on Drive")
 
-    # Phase 1: Resolve photo URLs (sequential — Drive API not thread-safe)
     person_tasks = []
     active_filenames = set()
     new_photos = 0
@@ -237,11 +206,9 @@ def sync():
 
             try:
                 if drive_filename in drive_photos:
-                    # Photo already on Drive — reuse URL
                     file_id = drive_photos[drive_filename]
                     photo_url = f"https://lh3.googleusercontent.com/d/{file_id}"
                 else:
-                    # New/changed photo — download and upload
                     image_bytes = download_image(source_photo)
                     file_id, photo_url = upload_photo_to_drive(
                         drive, folder_id, image_bytes, drive_filename
@@ -258,7 +225,6 @@ def sync():
     else:
         print(f"All {len(active_filenames)} photos reused from Drive")
 
-    # Phase 2: Update Notion pages (parallel — httpx client is thread-safe)
     created = 0
     updated = 0
     errors = 0
@@ -292,7 +258,6 @@ def sync():
             print(f"  Failed: {name}")
             errors += 1
 
-    # Remove people no longer in cast (with safety check)
     removed = 0
     to_remove = {pid: page_id for pid, page_id in existing.items() if pid not in cast_people}
     if to_remove and not cast_people:
@@ -307,7 +272,6 @@ def sync():
                 print(f"  Failed to archive {pid}: {e}")
                 errors += 1
 
-    # Clean up orphaned Drive photos (people removed from cast)
     orphaned = set(drive_photos.keys()) - active_filenames
     for filename in orphaned:
         try:

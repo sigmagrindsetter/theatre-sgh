@@ -11,7 +11,6 @@ AKTORZY_DATABASE_ID = "f61ce185714a44bdb807245995ed7b40"
 # shared with service account as writer)
 DRIVE_TEMP_FOLDER_ID = "19rXj1TqIM1UDoG7E8JX326JeSwqv0AwR"
 
-# Size columns to sync from Members to Aktorzy
 SIZE_COLUMNS = [
     "Obwód łydki",
     "Obwód szyi",

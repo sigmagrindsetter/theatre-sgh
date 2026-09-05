@@ -53,10 +53,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 
-# ---------------------------------------------------------------------------
-# Fonts
-# ---------------------------------------------------------------------------
-
 _FONTS_REGISTERED = False
 
 
@@ -89,10 +85,6 @@ def register_fonts():
     raise RuntimeError("No serif TTF font found")
 
 
-# ---------------------------------------------------------------------------
-# Colors
-# ---------------------------------------------------------------------------
-
 GRAY = Color(0.45, 0.45, 0.45)
 LIGHT_GRAY = Color(0.85, 0.85, 0.85)
 BG_PURPLE = HexColor("#f3e8ff")
@@ -106,10 +98,6 @@ BORDER_GRAY = HexColor("#9ca3af")
 PAGE_W = A4[0] - 140  # content width (margins 70+70)
 
 
-# ---------------------------------------------------------------------------
-# Styles
-# ---------------------------------------------------------------------------
-
 def make_styles():
     return {
         "act": ParagraphStyle(
@@ -120,7 +108,6 @@ def make_styles():
             "scene", fontName="SerifBold", fontSize=13,
             alignment=TA_CENTER, leading=18, spaceBefore=14, spaceAfter=8,
         ),
-        # Own speech
         "own_name": ParagraphStyle(
             "own_name", fontName="SerifBold", fontSize=12,
             alignment=TA_CENTER, leading=16, spaceBefore=10, spaceAfter=2,
@@ -134,7 +121,6 @@ def make_styles():
             alignment=TA_CENTER, leading=15, spaceBefore=1, spaceAfter=1,
             textColor=GRAY,
         ),
-        # Cue speech (other characters) — gray, NOT italic
         "cue_name": ParagraphStyle(
             "cue_name", fontName="SerifBold", fontSize=11,
             alignment=TA_CENTER, leading=15, spaceBefore=8, spaceAfter=1,
@@ -150,13 +136,11 @@ def make_styles():
             alignment=TA_CENTER, leading=14, spaceBefore=1, spaceAfter=1,
             textColor=GRAY,
         ),
-        # Stage directions (standalone)
         "stage_dir": ParagraphStyle(
             "stage_dir", fontName="SerifItalic", fontSize=11,
             alignment=TA_LEFT, leading=15, spaceBefore=3, spaceAfter=3,
             textColor=GRAY,
         ),
-        # Inside callout boxes
         "box_title": ParagraphStyle(
             "box_title", fontName="SerifBold", fontSize=10,
             alignment=TA_LEFT, leading=14,
@@ -169,7 +153,6 @@ def make_styles():
             "box_text_gray", fontName="Serif", fontSize=9,
             alignment=TA_CENTER, leading=13, textColor=GRAY,
         ),
-        # Title page
         "title": ParagraphStyle(
             "title", fontName="SerifBold", fontSize=22,
             alignment=TA_CENTER, leading=28,
@@ -182,7 +165,6 @@ def make_styles():
 
 
 def make_callout_box(flowables, border_color, bg_color):
-    """Create a callout box with a colored left border and background."""
     border_w = 3
     content_w = PAGE_W - border_w - 6
     inner = Table([[f] for f in flowables], colWidths=[content_w])
@@ -204,10 +186,6 @@ def make_callout_box(flowables, border_color, bg_color):
     ]))
     return outer
 
-
-# ---------------------------------------------------------------------------
-# Notion fetching
-# ---------------------------------------------------------------------------
 
 def fetch_blocks_recursive(notion, block_id):
     blocks = []
@@ -232,10 +210,6 @@ def fetch_blocks_recursive(notion, block_id):
 def get_text(rich_texts):
     return "".join(t["plain_text"] for t in rich_texts)
 
-
-# ---------------------------------------------------------------------------
-# Script parsing
-# ---------------------------------------------------------------------------
 
 def parse_speech_block(rich_texts):
     """Parse a paragraph's rich text into (character_name, parts).
@@ -262,7 +236,6 @@ def parse_speech_block(rich_texts):
 
 
 def parse_choreo_rich_text(rich_texts):
-    """Extract bold title and normal description from a choreo callout."""
     title = ""
     desc = ""
     past_title = False
@@ -317,11 +290,9 @@ def _is_dialogue_continuation(text):
     if not first_word:
         return False
 
-    # ALL CAPS first word = speaker header, not a stage direction
     if first_word == first_word.upper() and any(c.isalpha() for c in first_word):
         return True
 
-    # Mixed/lowercase first word matching a character name = stage direction
     if first_word.lower() in _STAGE_DIR_NAMES:
         return False
 
@@ -400,10 +371,6 @@ def parse_blocks(blocks):
     return elements
 
 
-# ---------------------------------------------------------------------------
-# Role / character mapping
-# ---------------------------------------------------------------------------
-
 def get_obsady_roles(notion):
     roles = []
     cursor = None
@@ -479,7 +446,6 @@ def assign_continuations(elements, all_chars):
             speaker = last_speaker
             new_parts = list(parts)
 
-            # Check if first dialogue part is a character name
             if new_parts and new_parts[0][0] == "dialogue":
                 first = new_parts[0][1].strip()
                 upper = first.upper()
@@ -497,7 +463,6 @@ def assign_continuations(elements, all_chars):
             elif speaker:
                 result.append(("SPEECH", speaker, parts))
             else:
-                # No speaker context — treat as stage direction
                 text = " ".join(t for _, t in parts)
                 result.append(("STAGE_DIR", text))
 
@@ -509,10 +474,6 @@ def assign_continuations(elements, all_chars):
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# Scene grouping
-# ---------------------------------------------------------------------------
 
 def _group_by_scene(elements):
     """Group elements into (act_name, scene_name, scene_elems) tuples."""
@@ -539,7 +500,6 @@ def _group_by_scene(elements):
     if current_scene is not None:
         scenes.append((current_act, current_scene, current_elems))
 
-    # Prolog elements (before first scene heading)
     prolog_elems = []
     for elem in elements:
         if elem[0] in ("ACT", "SCENE"):
@@ -552,10 +512,6 @@ def _group_by_scene(elements):
 
     return scenes
 
-
-# ---------------------------------------------------------------------------
-# Filtering
-# ---------------------------------------------------------------------------
 
 def _role_search_names(role_name, char_names):
     names = set()
@@ -577,7 +533,6 @@ def _role_in_scene(scene_elems, char_names, role_search_names):
                 return True
         if e[0] == "SPEECH" and e[1] in char_names:
             return True
-    # Fallback: check stage directions
     for e in scene_elems:
         if e[0] == "STAGE_DIR":
             text_lower = e[1].lower()
@@ -611,7 +566,6 @@ def filter_for_role(elements, char_names, role_name=""):
         if scene_name:
             output.append(("SCENE", scene_name))
 
-        # Find OBSADA for this scene
         for e in scene_elems:
             if e[0] == "OBSADA":
                 output.append(e)
@@ -627,7 +581,6 @@ def filter_for_role(elements, char_names, role_name=""):
                 output.append(e)
             elif e[0] == "CHOREO":
                 output.append(e)
-            # MUSIC, LIGHTING, OBSADA, IMAGE — skip
 
     return output
 
@@ -674,12 +627,9 @@ def _truncate_technical_gaps(elements):
     structural = {"ACT", "SCENE"}
     n = len(elements)
 
-    # Mark which indices are cues
     is_cue = [elements[i][0] in cue_types for i in range(n)]
     is_struct = [elements[i][0] in structural for i in range(n)]
 
-    # For each element, calculate distance to nearest cue
-    # keep[i] = True if the element should be kept
     keep = [False] * n
 
     for i in range(n):
@@ -687,11 +637,9 @@ def _truncate_technical_gaps(elements):
             keep[i] = True
             continue
 
-    # For each cue, mark 2 before and 1 after as kept
     for i in range(n):
         if not is_cue[i]:
             continue
-        # 1 after
         count_after = 0
         for j in range(i + 1, n):
             if is_cue[j] or is_struct[j]:
@@ -701,7 +649,6 @@ def _truncate_technical_gaps(elements):
                 keep[j] = True
             else:
                 break
-        # 2 before
         count_before = 0
         for j in range(i - 1, -1, -1):
             if is_cue[j] or is_struct[j]:
@@ -712,7 +659,6 @@ def _truncate_technical_gaps(elements):
             else:
                 break
 
-    # Build output, replacing gaps with ELLIPSIS
     output = []
     in_gap = False
     for i in range(n):
@@ -749,16 +695,11 @@ def filter_for_general(elements):
     return output
 
 
-# ---------------------------------------------------------------------------
-# PDF generation
-# ---------------------------------------------------------------------------
-
 def esc(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def esc_verse(text):
-    """Escape text and preserve line breaks for verse formatting."""
     return esc(text).replace("\n", "<br/>")
 
 
@@ -775,7 +716,6 @@ def _build_title_page(story, styles, role_name, script_type):
 
 
 def generate_actor_pdf(role_name, elements):
-    """Generate actor script PDF."""
     register_fonts()
     styles = make_styles()
     buf = io.BytesIO()
@@ -842,7 +782,6 @@ def generate_actor_pdf(role_name, elements):
 
 
 def generate_technical_pdf(elements):
-    """Generate technical script PDF (sound + lighting)."""
     register_fonts()
     styles = make_styles()
     buf = io.BytesIO()
@@ -946,10 +885,6 @@ def generate_general_pdf(elements):
     return buf.getvalue()
 
 
-# ---------------------------------------------------------------------------
-# Google Drive
-# ---------------------------------------------------------------------------
-
 def get_drive_service():
     from googleapiclient.discovery import build
     from google.oauth2.credentials import Credentials
@@ -995,10 +930,6 @@ def upload_pdf(drive, folder_id, pdf_bytes, filename):
     drive.permissions().create(fileId=file_id, body={"type": "anyone", "role": "reader"}).execute()
     return file_id, f"https://drive.google.com/file/d/{file_id}/view"
 
-
-# ---------------------------------------------------------------------------
-# Notion output page
-# ---------------------------------------------------------------------------
 
 def sanitize_filename(text):
     nfkd = unicodedata.normalize("NFKD", text.lower())
@@ -1056,10 +987,6 @@ def update_output_page(notion, page_id, role_files):
         notion.blocks.children.append(block_id=page_id, children=children[i:i + 100])
 
 
-# ---------------------------------------------------------------------------
-# Main sync
-# ---------------------------------------------------------------------------
-
 def sync():
     notion = NotionAuth.get_client()
 
@@ -1071,7 +998,6 @@ def sync():
 
     print(f"Changes detected (last edit: {timestamp})")
 
-    # 1. Fetch and parse
     print("Fetching script blocks...")
     blocks = fetch_blocks_recursive(notion, SOURCE_PAGE_ID)
     elements = parse_blocks(blocks)
@@ -1079,16 +1005,13 @@ def sync():
 
     all_chars = get_all_script_characters(elements)
     elements = assign_continuations(elements, all_chars)
-    # Re-count after continuations absorbed
     all_chars = get_all_script_characters(elements)
     print(f"  Found {len(all_chars)} unique characters")
 
-    # 2. Get roles and build mapping
     roles = get_obsady_roles(notion)
     print(f"  {len(roles)} roles in Obsady")
     role_map = build_role_character_map(roles, all_chars)
 
-    # 3. Generate PDFs and upload (parallel generation, serialized upload)
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
@@ -1157,7 +1080,6 @@ def sync():
 
     generated = len(role_files)
 
-    # 4. Update Notion output page
     print("Updating Notion output page...")
     page_id = find_output_page(notion)
     if not page_id:

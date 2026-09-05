@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-Generowanie raportów Budżetu w Notion. W całości odtwarzane przy każdym uruchomieniu.
-
-Budżet nieoficjalny (pod stroną "Budżet nieoficjalny"):
-- Stan konta — ogólny       — zwroty Budżet→Osoba + 3 agregaty sald (prosty widok)
-- Stan konta — indywidualny — strona osoby bezpośrednio pod spodem, każda z pełną
-                              tekstową historią + załączonym PDF-em historii konta
-
-Budżet oficjalny (pod stroną "Budżet oficjalny"):
-- Stan konta — oficjalny    — rozbicie per rok
-
-Uruchom z --force, aby pominąć wykrywanie zmian.
-"""
-
 import os
 import sys
 import unicodedata
@@ -46,8 +32,6 @@ DRIVE_FOLDER_NAME = "Theatre SGH - Stan konta"
 NOW = datetime.now()
 NOW_FMT = NOW.strftime("%d.%m.%Y %H:%M")
 
-
-# --- Notion block helpers ---
 
 def text_block(content, bold=False):
     return {
@@ -93,8 +77,6 @@ def file_block(url, caption):
             "file": {"type": "external", "external": {"url": url},
                      "caption": [{"type": "text", "text": {"content": caption}}]}}
 
-
-# --- Google Drive helpers (wzór z aplikacji excuses) ---
 
 def get_drive_service():
     from googleapiclient.discovery import build
@@ -148,8 +130,6 @@ def slugify(text):
     return "".join(c if c.isalnum() else "-" for c in ascii_text).strip("-")
 
 
-# --- Notion page management ---
-
 def clear_page(client, page_id):
     while True:
         children = client.blocks.children.list(block_id=page_id, page_size=100)
@@ -196,8 +176,6 @@ def delete_old_page(client, parent_id, title):
         client.blocks.delete(block_id=page_id)
         print(f"  Usunięto starą stronę '{title}'")
 
-
-# --- Budżet nieoficjalny: strona ogólna ---
 
 def bal_word(value):
     if abs(value) < 0.005:
@@ -248,8 +226,6 @@ def build_overall_blocks(data):
     return blocks
 
 
-# --- Budżet nieoficjalny: strona osoby ---
-
 def build_person_blocks(account, pdf_url):
     blocks = [callout(f"Stan na: {NOW_FMT}. Generowane automatycznie.")]
 
@@ -283,8 +259,6 @@ def build_person_blocks(account, pdf_url):
         "ujemna = należność od budżetu (Budżet → Osoba)."))
     return blocks
 
-
-# --- Budżet oficjalny ---
 
 WYDATEK_STATUSES = ["Planowane", "Zaakceptowane", "Wydane", "Zaksięgowane"]
 
@@ -373,8 +347,6 @@ def build_official_blocks(stats_per_year):
     return blocks
 
 
-# --- Main ---
-
 def main():
     client = NotionAuth.get_client()
 
@@ -387,12 +359,10 @@ def main():
         return
     print(f"Wykryto zmiany (ostatnia edycja: {timestamp})")
 
-    # Sprzątanie po starej strukturze
     print("\n=== Sprzątanie starych stron ===")
     delete_old_page(client, BUDGET_PAGE, PAGE_TITLE_OVERALL)
     delete_old_page(client, BUDGET_PAGE, PAGE_TITLE_INDIVIDUAL)
 
-    # --- Dane nieoficjalne ---
     print("\n=== Budżet nieoficjalny: pobieranie danych ===")
     data = balance.load(client)
     person_accounts = sorted(
@@ -401,7 +371,6 @@ def main():
     print(f"  Kont osób: {len(person_accounts)}, "
           f"Saldo obecne: {fmt_zl(data['saldo'])}")
 
-    # --- Strona ogólna ---
     print(f"\n=== '{PAGE_TITLE_OVERALL}' ===")
     overall_id = find_or_create_page(client, NIEOFICJALNY_PAGE, PAGE_TITLE_OVERALL)
     clear_page(client, overall_id)
@@ -409,11 +378,10 @@ def main():
     print(f"  Saldo po obecnych: {fmt_zl(data['saldo_po_obecnych'])}, "
           f"po planowanych: {fmt_zl(data['saldo_po_planowanych'])}")
 
-    # --- Strony indywidualne (bezpośrednio pod 'indywidualny') ---
     print(f"\n=== '{PAGE_TITLE_INDIVIDUAL}' ===")
     individual_id = find_or_create_page(
         client, NIEOFICJALNY_PAGE, PAGE_TITLE_INDIVIDUAL)
-    clear_page(client, individual_id)  # usuwa stare grupy i strony osób
+    clear_page(client, individual_id)
     write_blocks(client, individual_id, [callout(
         f"Stan na: {NOW_FMT}. Strona każdej osoby zawiera pełną historię "
         f"oraz PDF historii konta. Generowane automatycznie.")])
@@ -431,7 +399,6 @@ def main():
         write_blocks(client, page["id"], build_person_blocks(acc, url))
         print(f"  {acc['name']}: {bal_word(acc['balance_due'])}")
 
-    # --- Budżet oficjalny ---
     print("\n=== Budżet oficjalny ===")
     budget_per_year = get_budget_per_year(client)
     official_records = [extract_official_record(p)

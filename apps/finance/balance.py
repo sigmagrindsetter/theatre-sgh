@@ -1,18 +1,3 @@
-"""
-Wspólna logika Budżetu nieoficjalnego: pobieranie rekordów i liczenie sald.
-
-Używane przez report.py (raporty Stan konta) oraz wezwania.py (wezwania mailowe),
-żeby obie funkcje liczyły salda dokładnie tak samo.
-
-Model:
-- Saldo = suma transakcji ze znakiem (Osoba→Budżet +, Budżet→Osoba −)
-  = gotówka na koncie sekretarza.
-- Wpłaty w danym kierunku pokrywają zobowiązania chronologicznie; część
-  niepokryta to "należność" (zaległość osoby albo zwrot należny od budżetu).
-- balance_due  — należności z zobowiązań ZAPADŁYCH (Termin ≤ dziś)
-- balance_all  — należności ze WSZYSTKICH zobowiązań (też przyszłych)
-"""
-
 from datetime import date
 
 ZOBOWIAZANIA_DB = "3403f4160a378193a7fac6242fdbe786"
@@ -73,10 +58,6 @@ def is_due(record):
 
 
 def compute_unpaid(obligations, transactions):
-    """Dla jednego konta zwraca listę niepokrytych (lub częściowo) zobowiązań.
-
-    Wpłaty w danym kierunku pokrywają zobowiązania w kolejności chronologicznej.
-    """
     unpaid = []
     for kier in (OSOBA_BUDZET, BUDZET_OSOBA):
         obs = sorted((o for o in obligations if o["kierunek"] == kier), key=_sortkey)

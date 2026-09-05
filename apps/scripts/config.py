@@ -11,13 +11,9 @@ OUTPUT_PAGE_TITLE = "Scenariusze indywidualne"
 # Google Drive folder for generated PDFs
 DRIVE_FOLDER_NAME = "Theatre SGH - Scenariusze Aktorskie"
 
-# ---------------------------------------------------------------------------
-# Role → character mapping
-#
 # Obsady role names use "/" for multi-role entries (e.g. "Moliere/Nauczyciel
 # Filozofii").  Simple roles are matched automatically (case-insensitive);
 # this dict provides overrides for non-obvious names.
-# ---------------------------------------------------------------------------
 ROLE_OVERRIDES = {
     "Lokaj1/Muzyk1/Krawczyk1": ["LOKAJ I", "KRAWCZYK I"],
     "Lokaj2/Muzyk2": ["LOKAJ II"],

@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-Excuses: Generate formal excuse letter PDFs from Notion database records.
-
-Reads pending records from the "Zgłaszanie potrzeb usprawiedliwieniowych SGH"
-database, validates them, generates PDFs, uploads to Google Drive, and updates
-the Notion record with the file link and status.
-
-Smart processing:
-  - "Oczekuje" records are always processed.
-  - "Brak wystarczających informacji" records are reprocessed only if a human
-    (not the integration bot) edited them since the last run.
-  - "Dokument wygenerowany" and "Dokument podpisany" are skipped.
-"""
-
 import os
 import sys
 import unicodedata
@@ -35,12 +21,7 @@ from config import (
 from pdf_generator import generate_pdf, format_polish_date
 
 
-# ---------------------------------------------------------------------------
-# Google Drive helpers (same pattern as costumes app)
-# ---------------------------------------------------------------------------
-
 def get_drive_service():
-    """Get Drive service using teatr.sgh OAuth credentials."""
     from googleapiclient.discovery import build
     from google.oauth2.credentials import Credentials
 
@@ -55,7 +36,6 @@ def get_drive_service():
 
 
 def get_or_create_folder(drive):
-    """Find or create the Drive folder for excuse PDFs."""
     resp = (
         drive.files()
         .list(
@@ -79,10 +59,8 @@ def get_or_create_folder(drive):
 
 
 def upload_pdf(drive, folder_id, pdf_bytes, filename):
-    """Upload PDF to Drive, make public, return (file_id, view_url)."""
     from googleapiclient.http import MediaInMemoryUpload
 
-    # Delete old version if exists
     resp = (
         drive.files()
         .list(
@@ -110,12 +88,7 @@ def upload_pdf(drive, folder_id, pdf_bytes, filename):
     return file_id, view_url
 
 
-# ---------------------------------------------------------------------------
-# Notion helpers
-# ---------------------------------------------------------------------------
-
 def query_actionable_records(notion):
-    """Get records with status Oczekuje or Brak wystarczających informacji."""
     pages = []
     for status_name in [STATUS_PENDING, STATUS_INSUFFICIENT]:
         has_more = True
@@ -138,34 +111,28 @@ def query_actionable_records(notion):
 
 
 def extract_data(page):
-    """Extract record fields into a flat dict. Returns (data, errors)."""
     props = page["properties"]
     errors = []
 
-    # Name
     title_items = props.get("Imię i nazwisko", {}).get("title", [])
     name = title_items[0]["plain_text"].strip() if title_items else ""
     if not name:
         errors.append("Brak imienia i nazwiska")
 
-    # Album number
     album = props.get("nr albumu", {}).get("number")
     if not album:
         errors.append("Brak numeru albumu")
 
-    # Lecturer
     rt = props.get("Prowadzący zajęcia", {}).get("rich_text", [])
     lecturer = rt[0]["plain_text"].strip() if rt else ""
     if not lecturer:
         errors.append("Brak prowadzącego zajęcia")
 
-    # Subject
     rt2 = props.get("Nazwa zajęć", {}).get("rich_text", [])
     subject = rt2[0]["plain_text"].strip() if rt2 else ""
     if not subject:
         errors.append("Brak nazwy zajęć")
 
-    # Date & times
     date_prop = props.get("Data i godziny zajęć", {}).get("date") or {}
     start_str = date_prop.get("start")
     end_str = date_prop.get("end")
@@ -179,7 +146,6 @@ def extract_data(page):
     else:
         errors.append("Brak daty i godzin zajęć (wymagany zakres: data z godziną od–do)")
 
-    # Reason (optional)
     rt3 = props.get("Powód usprawiedliwienia", {}).get("rich_text", [])
     reason = rt3[0]["plain_text"].strip() if rt3 else ""
 
@@ -196,14 +162,12 @@ def extract_data(page):
 
 
 def sanitize_filename(text):
-    """Convert text to a safe filename slug."""
     nfkd = unicodedata.normalize("NFKD", text.lower())
     ascii_text = nfkd.encode("ascii", "ignore").decode("ascii")
     return "".join(c if c.isalnum() else "-" for c in ascii_text).strip("-")
 
 
 def should_skip(page, bot_user_id):
-    """Check if a 'Brak wystarczających informacji' record was only edited by the bot."""
     status = page["properties"]["status"]["status"]["name"]
     if status != STATUS_INSUFFICIENT:
         return False
@@ -211,10 +175,6 @@ def should_skip(page, bot_user_id):
     last_editor_id = page.get("last_edited_by", {}).get("id")
     return last_editor_id == bot_user_id
 
-
-# ---------------------------------------------------------------------------
-# Main sync
-# ---------------------------------------------------------------------------
 
 def sync():
     notion = NotionAuth.get_client()
@@ -238,7 +198,6 @@ def sync():
         page_id = page["id"]
         status = page["properties"]["status"]["status"]["name"]
 
-        # Smart skip: "insufficient" records not edited by a human
         if should_skip(page, bot_user_id):
             skipped += 1
             continue
@@ -247,7 +206,6 @@ def sync():
         label = data.get("name") or page_id[:8]
 
         if validation_errors:
-            # Only update status if it's not already "insufficient"
             if status != STATUS_INSUFFICIENT:
                 try:
                     notion.pages.update(
@@ -262,7 +220,6 @@ def sync():
             insufficient += 1
             continue
 
-        # Generate PDF
         try:
             pdf_bytes = generate_pdf(data)
         except Exception as e:
@@ -270,7 +227,6 @@ def sync():
             errors += 1
             continue
 
-        # Upload to Drive
         date_slug = data["date_start"].strftime("%Y-%m-%d")
         filename = f"usprawiedliwienie-{sanitize_filename(data['name'])}-{date_slug}.pdf"
         try:
@@ -280,7 +236,6 @@ def sync():
             errors += 1
             continue
 
-        # Update Notion: attach PDF + set status
         try:
             notion.pages.update(
                 page_id=page_id,

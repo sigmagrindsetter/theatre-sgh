@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""
-Jednorazowy skrypt — zobowiązania składkowe na wyjazd WTOOPA.
-
-Tworzy w bazie Zobowiązania jeden rekord dla każdej z 20 osób zapisanych
-w kolumnie "Teatrzak" formularza (baza 3253f416...). Kwota zależy od pola
-"Student członek organizacji" w bazie Członków:
-  - zaznaczone  -> 100 zł
-  - niezaznaczone -> 200 zł
-
-Opis:     "Składka WTOOPA - {Imię Nazwisko}"
-Typ:      Wyjazd
-Kierunek: Osoba → Budżet
-Termin:   2026-05-18
-
-Uruchom bez argumentów -> podgląd (dry run).
-Uruchom z  --write     -> faktyczne utworzenie rekordów.
-"""
-
 import sys
 from pathlib import Path
 
@@ -71,7 +53,6 @@ def main():
     write = "--write" in sys.argv
     client = NotionAuth.get_client()
 
-    # Zabezpieczenie: nie twórz duplikatów, jeśli WTOOPA już jest w bazie.
     existing = [
         p for p in query_all(client, ZOBOWIAZANIA_DB)
         if "".join(t["plain_text"] for t in

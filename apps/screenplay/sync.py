@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-Screenplay PDF generator.
-
-Fetches screenplay content from the Notion 'Scenariusz do edycji' page,
-generates a PDF in standard screenplay format, uploads to Google Drive,
-and replaces the file block on the Notion parent page.
-"""
-
 import sys
 import os
 import tempfile
@@ -26,7 +18,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 
-# ── Page layout (US Letter, standard screenplay format) ──────────────────
 PAGE_W, PAGE_H = letter  # 612 x 792 points
 MARGIN_L = 108   # 1.5 in
 MARGIN_R = 72    # 1.0 in
@@ -37,9 +28,8 @@ FONT_SIZE = 12
 LINE_H = 12      # single-spaced
 CHAR_W = 7.2     # Courier 12pt character width
 
-# Horizontal positions and widths (in characters)
 ACTION_X = MARGIN_L
-ACTION_CHARS = int((PAGE_W - MARGIN_L - MARGIN_R) / CHAR_W)  # ~60
+ACTION_CHARS = int((PAGE_W - MARGIN_L - MARGIN_R) / CHAR_W)
 
 DIALOGUE_X = int(2.5 * 72)  # 180pt from left edge
 DIALOGUE_CHARS = 38
@@ -49,8 +39,6 @@ CHARACTER_CENTER_X = int(3.7 * 72)  # 266pt — standard screenplay character cu
 TOP_Y = PAGE_H - MARGIN_T
 BOT_Y = MARGIN_B
 
-
-# ── Font setup ───────────────────────────────────────────────────────────
 
 def setup_fonts():
     """Register a TTF monospace font for Polish character support."""
@@ -79,8 +67,6 @@ def setup_fonts():
     return "Courier"
 
 
-# ── Notion block fetching ────────────────────────────────────────────────
-
 def fetch_all_blocks(notion, page_id):
     """Fetch all blocks from a page with pagination."""
     blocks = []
@@ -108,7 +94,6 @@ def is_all_italic(rich_texts):
 
 
 def split_by_italic(rich_texts):
-    """Split rich text into groups by italic formatting."""
     groups = []
     current_italic = None
     current_parts = []
@@ -126,8 +111,6 @@ def split_by_italic(rich_texts):
     return groups
 
 
-# ── Element extraction ───────────────────────────────────────────────────
-
 def extract_elements(blocks):
     """Convert Notion blocks to typed screenplay elements.
 
@@ -135,7 +118,7 @@ def extract_elements(blocks):
                    DIALOGUE, ACTION, SCENE_BREAK
     """
     elements = []
-    state = "title"  # title | normal | dialogue
+    state = "title"
 
     for block in blocks:
         btype = block["type"]
@@ -171,7 +154,6 @@ def extract_elements(blocks):
                 state = "normal"
 
             elif state == "dialogue":
-                # Handle mixed italic/non-italic in a single paragraph
                 groups = split_by_italic(rich_texts)
                 for is_italic, segment in groups:
                     segment = segment.strip()
@@ -185,7 +167,6 @@ def extract_elements(blocks):
             else:
                 elements.append(("ACTION", text))
 
-        # Other block types (callout, quote, list, etc.) → treat as action
         elif btype in (
             "bulleted_list_item", "numbered_list_item", "quote",
             "callout", "toggle",
@@ -198,8 +179,6 @@ def extract_elements(blocks):
     return elements
 
 
-# ── PDF rendering ────────────────────────────────────────────────────────
-
 class ScreenplayRenderer:
     def __init__(self, output_path, font_name):
         self.c = canvas.Canvas(output_path, pagesize=letter)
@@ -211,7 +190,6 @@ class ScreenplayRenderer:
         self.c.showPage()
         self.page += 1
         self.y = TOP_Y
-        # Page numbers top-right from page 2 onward
         if self.page >= 2:
             self.c.setFont(self.font, FONT_SIZE)
             self.c.drawRightString(
@@ -219,7 +197,6 @@ class ScreenplayRenderer:
             )
 
     def _need_space(self, lines=1):
-        """Start a new page if not enough room for `lines` lines."""
         if self.y - (lines * LINE_H) < BOT_Y:
             self._new_page()
 
@@ -237,15 +214,12 @@ class ScreenplayRenderer:
             self.y -= LINE_H
 
     def _wrap(self, text, width):
-        """Wrap text to given character width, handling embedded newlines."""
         result = []
         for paragraph in text.split("\n"):
             paragraph = paragraph.strip()
             if paragraph:
                 result.extend(textwrap.wrap(paragraph, width) or [paragraph])
         return result or [""]
-
-    # ── Title page ───────────────────────────────────────────────────
 
     def _render_title_page(self, elements):
         title = ""
@@ -257,16 +231,13 @@ class ScreenplayRenderer:
             elif etype == "TITLE_LINE":
                 lines.append(text)
 
-        # Title at roughly 40% from top, larger font
         self.y = PAGE_H * 0.55
         self.c.setFont(self.font, 24)
         self.c.drawCentredString(PAGE_W / 2, self.y, title)
         self.y -= 24 * 3
 
-        # Author and info lines
         self.c.setFont(self.font, FONT_SIZE)
         for line in lines:
-            # Split "Napisane przez X" / "Written by X" into two lines
             for prefix in ("Napisane przez ", "Written by "):
                 if line.startswith(prefix):
                     self.c.drawCentredString(PAGE_W / 2, self.y, prefix.strip())
@@ -280,10 +251,7 @@ class ScreenplayRenderer:
 
         self._new_page()
 
-    # ── Content rendering ────────────────────────────────────────────
-
     def render(self, elements):
-        # Split title page from content (everything before the first SCENE_BREAK)
         title_elements = []
         content_start = 0
         for i, (etype, _) in enumerate(elements):
@@ -292,7 +260,6 @@ class ScreenplayRenderer:
                 break
             title_elements.append(elements[i])
         else:
-            # No scene break found — all content, no title page
             content_start = 0
             title_elements = []
 
@@ -329,8 +296,6 @@ class ScreenplayRenderer:
         self.c.save()
 
 
-# ── Google Drive ─────────────────────────────────────────────────────────
-
 def get_drive_service():
     """Get Drive service using teatr.sgh OAuth credentials."""
     from googleapiclient.discovery import build
@@ -350,7 +315,6 @@ def upload_pdf(drive, file_path, filename):
     """Upload or update PDF on Drive. Returns (file_id, download_url)."""
     from googleapiclient.http import MediaFileUpload
 
-    # Find existing file by name
     resp = drive.files().list(
         q=f"name='{filename}' and mimeType='application/pdf' and trashed=false",
         fields="files(id)",
@@ -379,10 +343,7 @@ def upload_pdf(drive, file_path, filename):
     return file_id, f"https://drive.google.com/uc?export=download&id={file_id}"
 
 
-# ── Notion file block update ────────────────────────────────────────────
-
 def update_notion_file(notion, parent_page_id, drive_url):
-    """Replace the file block on the parent Notion page."""
     blocks = notion.blocks.children.list(block_id=parent_page_id, page_size=100)
 
     file_block_id = None
@@ -394,12 +355,10 @@ def update_notion_file(notion, parent_page_id, drive_url):
         if b["type"] == "child_page":
             insert_after_id = b["id"]
 
-    # Delete existing file block
     if file_block_id:
         notion.blocks.delete(block_id=file_block_id)
         print(f"  Deleted old file block")
 
-    # Create new external file block
     new_block = {
         "type": "file",
         "file": {
@@ -416,8 +375,6 @@ def update_notion_file(notion, parent_page_id, drive_url):
     print(f"  Created new file block")
 
 
-# ── Main ─────────────────────────────────────────────────────────────────
-
 def main():
     print("=" * 60)
     print("Screenplay PDF Sync")
@@ -425,7 +382,6 @@ def main():
 
     notion = NotionAuth.get_client()
 
-    # 1. Check for changes
     force = "--force" in sys.argv
     changed, timestamp = check_page_changed(notion, SCREENPLAY_PAGE_ID, "screenplay")
 
@@ -435,18 +391,14 @@ def main():
 
     print(f"Changes detected (last edit: {timestamp})")
 
-    # 2. Setup fonts
     font_name = setup_fonts()
 
-    # 3. Fetch screenplay content
     blocks = fetch_all_blocks(notion, SCREENPLAY_PAGE_ID)
     print(f"  Fetched {len(blocks)} blocks")
 
-    # 4. Extract elements
     elements = extract_elements(blocks)
     print(f"  Extracted {len(elements)} elements")
 
-    # 5. Generate PDF
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = f.name
 
@@ -455,17 +407,13 @@ def main():
     pdf_size = os.path.getsize(pdf_path)
     print(f"  Generated PDF: {pdf_size:,} bytes")
 
-    # 6. Upload to Drive
     drive = get_drive_service()
     _, drive_url = upload_pdf(drive, pdf_path, PDF_FILENAME)
 
-    # 7. Update Notion file block
     update_notion_file(notion, PARENT_PAGE_ID, drive_url)
 
-    # 8. Update cache
     set_cached_time("screenplay", timestamp)
 
-    # Cleanup
     os.unlink(pdf_path)
 
     print("=" * 60)

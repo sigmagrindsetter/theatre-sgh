@@ -1,28 +1,18 @@
-"""
-Shared authentication for Google and Notion APIs
-Credentials loaded from environment variables
-"""
-
 import os
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 import gspread
 from notion_client import Client
 
-# Load environment variables once
 load_dotenv()
 
 
 class GoogleAuth:
-    """Universal Google Sheets authentication"""
-
-    _client = None  # Singleton instance
+    _client = None
 
     @classmethod
     def get_client(cls):
-        """Get authenticated Google Sheets client"""
         if cls._client is None:
-            # Get credentials from environment
             client_email = os.getenv('GOOGLE_CLIENT_EMAIL')
             private_key = os.getenv('GOOGLE_PRIVATE_KEY')
 
@@ -35,7 +25,6 @@ class GoogleAuth:
             # Handle escaped newlines in private key
             private_key = private_key.replace('\\n', '\n')
 
-            # Create credentials from environment
             creds_info = {
                 "type": "service_account",
                 "project_id": os.getenv('GOOGLE_PROJECT_ID', 'theatre-sgh'),
@@ -64,13 +53,10 @@ class GoogleAuth:
 
 
 class NotionAuth:
-    """Universal Notion authentication"""
-
-    _client = None  # Singleton instance
+    _client = None
 
     @classmethod
     def get_client(cls):
-        """Get authenticated Notion client"""
         if cls._client is None:
             token = os.getenv('NOTION_API_TOKEN')
 

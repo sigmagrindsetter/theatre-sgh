@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""
-Jednorazowy skrypt — uzgodnienie bazy Notion ze snapshotem CSV
-(skladki-snapshot-18-05-2026-17-30.csv).
-
-Trzy sekcje:
-  1. SKŁADKI  — 16 brakujących transakcji miesięcznych (50 zł). Wpłaty bez
-     pasującego miesiąca (Ciszewski 04/26, Kuna 11+12/25) zostały przesunięte
-     na kolejne miesiące, w których zobowiązanie istnieje (uzgodnione z użytkownikiem).
-  2. SOKOŁÓW — transakcje za wyjazd Sokołów dla osób, które wg CSV opłaciły,
-     a nie mają wpłaty w Notion. Szymon Kuna pominięty (CSV: nieopłacone).
-  3. WYDATKI — 8 nowych zakupów (poniesione przez kogoś i już zwrócone):
-     para zobowiązanie + transakcja, Kierunek Budżet → Osoba, Członek pusty.
-
-Uruchom bez argumentów -> podgląd (dry run).
-Uruchom z  --write     -> faktyczne utworzenie rekordów (idempotentne).
-"""
-
 import re
 import sys
 from pathlib import Path
@@ -33,8 +16,6 @@ KUNA_ID = "18f3f416-0a37-80ac-9436-f7a6c9dc330a"  # Sokołów: nieopłacone wg C
 MONTHS_PL = {1: "styczeń", 2: "luty", 3: "marzec", 4: "kwiecień", 5: "maj",
              6: "czerwiec", 10: "październik", 11: "listopad", 12: "grudzień"}
 
-# --- Sekcja 1: składki (member_id, "Nazwisko Imię", period YYYY-MM) ---
-# Wynik analizy CSV vs Notion + reguła przesuwania wpłat na istniejące zobowiązania.
 SKLADKI = [
     ("1933f416-0a37-8095-8fda-dd98725330e1", "Dymek Dorian",     "2026-04"),
     ("1ab3f416-0a37-80a1-b7c1-f41a1ca932d8", "Maciejewska Kaja", "2026-05"),
@@ -54,7 +35,6 @@ SKLADKI = [
     ("18e3f416-0a37-80fa-9e93-d261118a5ab6", "Grygo Marcin",     "2026-04"),
 ]
 
-# --- Sekcja 3: wydatki (opis, data ISO, kwota) — 8 nowych zakupów z CSV ---
 WYDATKI = [
     ("Odkup butów od Ani",                       "2026-04-13", 100),
     ("Dokup rekwizytów",                         "2026-04-16", 165),
@@ -106,23 +86,21 @@ def main():
     zob = query_all(client, ZOBOWIAZANIA_DB)
     trn = query_all(client, TRANSAKCJE_DB)
 
-    # indeksy
-    zob_skladka = {}   # (mid, YYYY-MM) -> page
+    zob_skladka = {}
     for z in zob:
         if sel_of(z, "Typ") == "Składka" and member_of(z):
             mp = re.search(r"\d{4}-\d{2}", title_of(z))
             if mp:
                 zob_skladka[(member_of(z), mp.group(0))] = z
-    trn_skladka = set()  # (mid, YYYY-MM normalizowane po dacie)
+    trn_skladka = set()
     for t in trn:
         if sel_of(t, "Typ") == "Składka" and member_of(t):
             d = (t["properties"].get("Data", {}).get("date") or {}).get("start")
             if d:
                 trn_skladka.add((member_of(t), d[:7]))
 
-    plan = []   # (kind, label, props_for_create, db)
+    plan = []
 
-    # === Sekcja 1: składki ===
     print("=" * 64)
     print("1. SKŁADKI — brakujące transakcje miesięczne")
     print("=" * 64)
@@ -146,7 +124,6 @@ def main():
         plan.append(("transakcja", f"{opis}  (50 zł, {period}-01)", props, TRANSAKCJE_DB))
         print(f"  + {opis}  (50 zł)")
 
-    # === Sekcja 2: Sokołów ===
     print("=" * 64)
     print("2. SOKOŁÓW — brakujące transakcje wyjazdowe")
     print("=" * 64)
@@ -173,7 +150,6 @@ def main():
         plan.append(("transakcja", f"{opis}  ({kwota} zł)", props, TRANSAKCJE_DB))
         print(f"  + {opis}  ({kwota} zł)")
 
-    # === Sekcja 3: wydatki ===
     print("=" * 64)
     print("3. WYDATKI — nowe zakupy (zobowiązanie + transakcja, Członek pusty)")
     print("=" * 64)

@@ -1,24 +1,4 @@
 #!/usr/bin/env python3
-"""
-Wezwania do uregulowania salda składkowego — wysyłka e-mailem.
-
-Funkcja klikana ręcznie w GitHub Actions (workflow_dispatch → wezwania.yml).
-Dla każdej osoby z dodatnim saldem (zaległość > 0) generuje pseudodokument PDF
-(snapshot z chwili uruchomienia) i wysyła go mailem.
-
-Argumenty:  python wezwania.py <tryb> [<filtr>]
-  tryb:
-    dry-run  — generuje i wypisuje, NIC nie wysyła (nie wymaga hasła)
-    test     — wysyła WSZYSTKIE wezwania na jeden adres testowy
-    live     — wysyła do każdej osoby na jej adres z bazy Członków
-  filtr (opcjonalnie) — liczba: przetwórz tylko pierwszych N osób;
-                        tekst: tylko osoby z tym fragmentem w imieniu/nazwisku
-
-Sekrety (env):
-  NOTION_API_TOKEN    — token Notion (jest już w repo)
-  GMAIL_APP_PASSWORD  — hasło aplikacji Gmail konta nadawcy (wymagane dla test/live)
-"""
-
 import os
 import smtplib
 import sys
@@ -58,7 +38,6 @@ def slugify(text):
 
 
 def build_body(account, generated_str, test_for=None):
-    """Treść maila. Zawiera zaległą kwotę i zestawienie pozycji."""
     first = account["name"].split()[0]
     total = account["balance_due"]
     owed = [u for u in account["unpaid_due"]
