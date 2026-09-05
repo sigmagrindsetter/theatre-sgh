@@ -13,7 +13,7 @@ from shared.auth import NotionAuth
 from shared.change_check import check_databases_changed, set_cached_time
 
 import balance
-from balance import OSOBA_BUDZET, BUDZET_OSOBA, is_due, signed, query_all
+from balance import BUDZET_OSOBA, is_due, signed, query_all
 from account_pdf import render_history_pdf, fmt_zl, fmt_date
 
 BUDGET_PAGE = "2853f4160a378083a40fc21a2b774f2e"

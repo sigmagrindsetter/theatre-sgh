@@ -15,10 +15,9 @@ from config import (
     STATUS_PENDING,
     STATUS_INSUFFICIENT,
     STATUS_GENERATED,
-    STATUS_SIGNED,
     DRIVE_FOLDER_NAME,
 )
-from pdf_generator import generate_pdf, format_polish_date
+from pdf_generator import generate_pdf
 
 
 def get_drive_service():
