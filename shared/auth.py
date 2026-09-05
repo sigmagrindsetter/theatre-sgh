@@ -1,7 +1,9 @@
 import os
+import time
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 import gspread
+import httpx
 from notion_client import Client
 
 load_dotenv()
@@ -52,6 +54,28 @@ class GoogleAuth:
         return cls._client
 
 
+
+class RetryingTransport(httpx.HTTPTransport):
+    """Retry on 429 (honouring Retry-After) and 5xx. Notion allows ~3 req/s per
+    integration and sync_all runs several jobs against one token concurrently."""
+
+    def __init__(self, retries=5, **kwargs):
+        super().__init__(**kwargs)
+        self.retries = retries
+
+    def handle_request(self, request):
+        for attempt in range(self.retries + 1):
+            response = super().handle_request(request)
+            if response.status_code != 429 and response.status_code < 500:
+                return response
+            if attempt == self.retries:
+                return response
+            response.read()
+            response.close()
+            wait = float(response.headers.get("Retry-After") or 2 ** attempt)
+            print(f"  Notion {response.status_code}, retrying in {wait:.0f}s ({attempt + 1}/{self.retries})")
+            time.sleep(wait)
+
 class NotionAuth:
     _client = None
 
@@ -65,7 +89,7 @@ class NotionAuth:
                     "Missing Notion token. Set NOTION_API_TOKEN in .env file"
                 )
 
-            cls._client = Client(auth=token)
+            cls._client = Client(auth=token, client=httpx.Client(transport=RetryingTransport()))
             print("✓ Notion authentication successful")
 
         return cls._client
