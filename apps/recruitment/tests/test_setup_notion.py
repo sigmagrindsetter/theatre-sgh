@@ -11,12 +11,13 @@ MEMBERS = {"Imię i Nazwisko": "title", "Person": "people", "Aktywny członek": 
 
 
 class FakeNotion:
-    """Just enough of the Notion API for setup_notion, including two-way relation sync."""
+    """Just enough of the Notion API for setup_notion, including two-way relation sync and the Views API."""
 
     def __init__(self, members=MEMBERS, board_readable=True):
         self.members = members
         self.board_readable = board_readable
         self.dbs = {}
+        self.views = {}
         self.children = []
         self.writes = []
         self.ids = count(1)
@@ -74,14 +75,37 @@ class FakeNotion:
                                                "synced_property_name": "Related to Oceny (Kandydat)"}
 
 
+    def request(self, path, method, query=None, body=None):
+        if method == "POST" and path == "views":
+            self.writes.append(("view", body["name"]))
+            self.views[f"view-{next(self.ids)}"] = body
+            return body
+        if path == "views":
+            return {"results": [{"object": "view", "id": view_id} for view_id, view in self.views.items()
+                                if view["database_id"] == query["database_id"]], "has_more": False}
+        kind, _, object_id = path.partition("/")
+        if kind == "views":
+            return self.views[object_id]
+        assert kind == "databases" and method == "GET"
+        return {"id": object_id, "data_sources": [{"id": f"ds-{object_id}"}]}
+
+
 def run_main(monkeypatch, fake):
     monkeypatch.setattr(setup_notion, "NotionAuth", SimpleNamespace(get_client=lambda: fake))
+    monkeypatch.setattr(setup_notion, "views_client", lambda: fake)
     return setup_notion.main()
 
 
+def database_id(fake, title):
+    return next(b["id"] for b in fake.children if b["child_database"]["title"] == title)
+
+
 def schema(fake, title):
-    database_id = next(b["id"] for b in fake.children if b["child_database"]["title"] == title)
-    return fake.dbs[database_id]["properties"]
+    return fake.dbs[database_id(fake, title)]["properties"]
+
+
+def views(fake):
+    return {view["name"]: view for view in fake.views.values()}
 
 
 def test_first_run_creates_schema(monkeypatch, capsys):
@@ -105,6 +129,39 @@ def test_first_run_creates_schema(monkeypatch, capsys):
     assert kandydaci["Liczba ocen"]["rollup"]["relation_property_name"] == "Oceny"
     out = capsys.readouterr().out
     assert "created database Kandydaci" in out and "db-1" in out
+
+
+def test_first_run_creates_board_views(monkeypatch):
+    fake = FakeNotion()
+    assert run_main(monkeypatch, fake) == 0
+
+    oceny_id, kandydaci_id = database_id(fake, "Oceny"), database_id(fake, "Kandydaci")
+    oceny, created = schema(fake, "Oceny"), views(fake)
+    assert sorted(created) == ["ranking", "wg kandydata", "wg oceniającego"]
+    for name, parent, group, sort in [("wg oceniającego", oceny_id, ("person", "Oceniający"), "Ocena"),
+                                      ("wg kandydata", oceny_id, ("relation", "Kandydat"), "Ocena"),
+                                      ("ranking", kandydaci_id, None, "Średnia")]:
+        view = created[name]
+        assert (view["database_id"], view["data_source_id"], view["type"]) == (parent, f"ds-{parent}", "table")
+        assert view["sorts"] == [{"property": sort, "direction": "descending"}]
+        if group:
+            assert view["configuration"]["group_by"] == {
+                "type": group[0], "property_id": oceny[group[1]]["id"], "sort": {"type": "ascending"}}
+        else:
+            assert "configuration" not in view
+
+
+def test_only_missing_views_are_created(monkeypatch):
+    fake = FakeNotion()
+    run_main(monkeypatch, fake)
+    view_id = next(i for i, view in fake.views.items() if view["name"] == "wg kandydata")
+    del fake.views[view_id]
+    views(fake)["ranking"]["sorts"] = [{"property": "Czas", "direction": "ascending"}]  # edited by the board
+    fake.writes.clear()
+
+    assert run_main(monkeypatch, fake) == 0
+    assert fake.writes == [("view", "wg kandydata")]
+    assert views(fake)["ranking"]["sorts"] == [{"property": "Czas", "direction": "ascending"}]
 
 
 def test_second_run_writes_nothing(monkeypatch, capsys):

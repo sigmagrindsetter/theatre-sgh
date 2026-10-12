@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
 Notion schema of the review panel (REVIEW_PANEL_SPEC.md §4): Kandydaci and Oceny under the board page
-Idempotent: creates missing databases and adds missing properties; never deletes, renames or retypes
+Idempotent: creates missing databases, properties and board views; never deletes, renames or retypes
 anything except the one-time rename of the synced relation property on Kandydaci to "Oceny"
 """
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import httpx
+from notion_client import Client
 from notion_client.errors import APIResponseError
 
 import config
-from shared.auth import NotionAuth
+from shared.auth import NotionAuth, RetryingTransport
 
 KANDYDACI_PROPERTIES = {
     "Imię i nazwisko": {"title": {}},
@@ -47,6 +50,18 @@ ROLLUPS = {
 }
 
 MEMBERS_PROPERTIES = {"Person": "people", "Aktywny członek": "checkbox", "Zarząd": "checkbox"}
+
+# The Views API needs Notion-Version 2025-09-03 or later; everything else stays on notion-client's default
+VIEWS_API_VERSION = "2026-03-11"
+
+# Board views (U6), created once by name: a view the board later edits in Notion is left alone
+VIEWS = {
+    config.OCENY_TITLE: [
+        {"name": "wg oceniającego", "group_by": ("person", "Oceniający"), "sort": "Ocena"},
+        {"name": "wg kandydata", "group_by": ("relation", RELATION), "sort": "Ocena"},
+    ],
+    config.KANDYDACI_TITLE: [{"name": "ranking", "sort": "Średnia"}],
+}
 
 
 class SetupError(Exception):
@@ -97,9 +112,15 @@ def child_databases(client):
         cursor = response["next_cursor"]
 
 
+def views_client():
+    return Client(auth=os.environ["NOTION_API_TOKEN"], notion_version=VIEWS_API_VERSION,
+                  client=httpx.Client(transport=RetryingTransport()))
+
+
 class Setup:
-    def __init__(self, client):
+    def __init__(self, client, views):
         self.client = client
+        self.views = views
         self.changes = []
 
     def create(self, title, properties):
@@ -152,7 +173,27 @@ class Setup:
             kandydaci = self.client.databases.update(kandydaci["id"], properties={synced: {"name": SYNCED}})
             self.changes.append(f"Kandydaci: synced relation renamed to {SYNCED}")
         kandydaci = self.add_missing(kandydaci, config.KANDYDACI_TITLE, ROLLUPS)
+        self.ensure_views(oceny, config.OCENY_TITLE)
+        self.ensure_views(kandydaci, config.KANDYDACI_TITLE)
         return kandydaci["id"], oceny["id"]
+
+    def ensure_views(self, database, title):
+        """Create the board views missing by name, as tables sorted descending, grouped where given."""
+        api = self.views
+        refs = api.request(path="views", method="GET", query={"database_id": database["id"]})["results"]
+        existing = {api.request(path=f"views/{ref['id']}", method="GET")["name"] for ref in refs}
+        source = api.request(path=f"databases/{database['id']}", method="GET")["data_sources"][0]["id"]
+        for view in VIEWS[title]:
+            if view["name"] in existing:
+                continue
+            body = {"database_id": database["id"], "data_source_id": source, "name": view["name"], "type": "table",
+                    "sorts": [{"property": view["sort"], "direction": "descending"}]}
+            if "group_by" in view:
+                kind, name = view["group_by"]
+                body["configuration"] = {"type": "table", "group_by": {
+                    "type": kind, "property_id": database["properties"][name]["id"], "sort": {"type": "ascending"}}}
+            api.request(path="views", method="POST", body=body)
+            self.changes.append(f"{title}: created view '{view['name']}'")
 
 
 def main():
@@ -160,7 +201,7 @@ def main():
     try:
         check_board_page(client)
         check_members(client)
-        setup = Setup(client)
+        setup = Setup(client, views_client())
         kandydaci_id, oceny_id = setup.run()
     except (SetupError, APIResponseError) as error:
         print(f"✗ {error}")
