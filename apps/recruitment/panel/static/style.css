@@ -15,3 +15,16 @@ nav form { margin: 0; }
 button { font: inherit; padding: .3rem .7rem; border: 1px solid var(--line); border-radius: 6px;
          background: #fff; color: var(--fg); cursor: pointer; }
 button:hover { border-color: var(--accent); }
+.muted { color: var(--muted); }
+img.thumb { display: block; width: 96px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; }
+.player { position: relative; aspect-ratio: 16 / 9; max-width: 720px; margin: 1rem 0; }
+.player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 6px; }
+dl.fields { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; }
+dl.fields dt { color: var(--muted); }
+dl.fields dd { margin: 0; overflow-wrap: anywhere; }
+.scale { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 1rem; }
+.scale button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+#grade label { display: block; margin-bottom: .25rem; }
+#grade textarea { width: 100%; font: inherit; padding: .5rem; border: 1px solid var(--line); border-radius: 6px; }
+#status { min-height: 1.5em; color: var(--muted); }
+#status.error { color: var(--accent); font-weight: 600; }

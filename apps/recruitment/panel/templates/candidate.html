@@ -1,0 +1,40 @@
+{% extends "panel.html" %}
+{% block title %}{{ c.name }}{% endblock %}
+{% block content %}
+<p><a href="/">← Wszyscy kandydaci</a></p>
+<h1>{{ c.name }}</h1>
+{% if c.youtube_id %}
+<div class="player">
+  <iframe src="https://www.youtube-nocookie.com/embed/{{ c.youtube_id }}" title="Filmik rekrutacyjny"
+          allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen
+          referrerpolicy="strict-origin-when-cross-origin"></iframe>
+</div>
+{% elif c.link %}
+<p><a href="{{ c.link }}" target="_blank" rel="noopener noreferrer">Otwórz filmik na Dysku Google</a></p>
+{% endif %}
+
+<dl class="fields">
+  <dt>Zgłoszenie</dt><dd>{{ c.czas_local }}</dd>
+  <dt>Imię i nazwisko</dt><dd>{{ c.name }}</dd>
+  <dt>Adres e-mail</dt><dd>{{ c.email }}</dd>
+  <dt>Uczelnia</dt><dd>{{ c.uczelnia }}</dd>
+  <dt>Rok studiów</dt><dd>{{ c.rok }}</dd>
+  <dt>Obszary</dt><dd>{{ c.obszary | join(", ") }}</dd>
+  <dt>Link do filmiku</dt><dd class="raw">{{ c.filmik }}</dd>
+</dl>
+
+<section id="grade" data-id="{{ c.id }}" data-ocena="{{ grade.ocena if grade and grade.ocena is not none else '' }}">
+  <h2>Twoja ocena</h2>
+  <div class="scale" role="group" aria-label="Ocena od 1 do 10">
+    {% for n in range(1, 11) %}
+    <button type="button" data-ocena="{{ n }}" aria-pressed="{{ 'true' if grade and grade.ocena == n else 'false' }}">{{ n }}</button>
+    {% endfor %}
+    <button type="button" class="clear" data-clear>Wyczyść</button>
+  </div>
+  <label for="komentarz">Komentarz</label>
+  <textarea id="komentarz" maxlength="2000" rows="6">{{ grade.komentarz if grade else '' }}</textarea>
+  <p id="status" role="status">{% if grade and grade.saved_time %}Zapisano {{ grade.saved_time }}{% endif %}</p>
+  <p class="muted">Ocenę i komentarz widzisz tylko Ty i Zarząd. Zmiany zapisują się automatycznie.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/app.js" defer></script>{% endblock %}
