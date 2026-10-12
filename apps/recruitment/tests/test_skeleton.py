@@ -6,9 +6,10 @@ client = TestClient(app)
 
 
 def test_healthz():
-    response = client.get("/healthz")
-    assert response.status_code == 200
-    assert response.text == "ok"
+    for path in ("/health", "/healthz"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.text == "ok"
 
 
 def test_legal_pages():

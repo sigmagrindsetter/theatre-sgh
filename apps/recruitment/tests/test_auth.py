@@ -299,6 +299,8 @@ def test_logout_clears_session(client, headers):
     sign_in(client, "code-alice")
     response = client.post("/auth/logout", headers=headers)
     assert response.status_code == 303
-    assert response.headers["location"] == "/"
+    assert response.headers["location"] == "/auth/logged-out"
     assert any(c.startswith('panel_session=""') and "Max-Age=0" in c for c in set_cookies(response))
     assert client.get("/whoami").status_code == 303
+    page = client.get("/auth/logged-out")
+    assert page.status_code == 200 and "Wylogowano" in page.text and 'href="/auth/login"' in page.text

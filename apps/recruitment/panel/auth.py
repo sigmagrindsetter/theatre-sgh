@@ -233,6 +233,12 @@ def _sign_in(request, code):
 def logout(request: Request):
     if not same_origin(request):
         return JSONResponse({"detail": "Brak dostępu"}, status_code=403)
-    response = RedirectResponse("/", status_code=303)
+    # Not "/": that would redirect on to Notion, and CSP form-action 'self' blocks a form's redirect off-site
+    response = RedirectResponse("/auth/logged-out", status_code=303)
     response.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
     return response
+
+
+@router.get("/auth/logged-out")
+def logged_out(request: Request):
+    return _page(request, "Wylogowano", "Wylogowano z panelu rekrutacyjnego.", 200, login=True)

@@ -84,7 +84,7 @@ def bob(notion):
 
 
 def csv_rows(response):
-    return list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"), newline="")))
+    return list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"), newline=""), delimiter=";"))
 
 
 @pytest.mark.parametrize("path", ["/zarzad", "/zarzad/export.csv"])
@@ -168,10 +168,10 @@ def test_csv_export(bob):
     assert response.headers["content-disposition"] == f'attachment; filename="oceny-{today}.csv"'
     assert response.content.startswith(b"\xef\xbb\xbf")
     body = response.content.decode("utf-8")
-    assert body.startswith("﻿Kandydat,Email,Średnia,Liczba ocen,Oceniający,Ocena,Komentarz,Ostatni zapis\r\n")
+    assert body.startswith("﻿Kandydat;Email;Średnia;Liczba ocen;Oceniający;Ocena;Komentarz;Ostatni zapis\r\n")
     assert body.endswith("\r\n") and body.count("\r\n") == 8
 
-    zofia, adam = ["Zofia Druga", "zofia@example.com", "7.50", "2"], ["Adam Pierwszy", "adam@example.com", "6.00", "2"]
+    zofia, adam = ["Zofia Druga", "zofia@example.com", "7,50", "2"], ["Adam Pierwszy", "adam@example.com", "6,00", "2"]
     assert csv_rows(response) == [
         HEADER,
         zofia + ["Alicja", "8", "'" + INJECTION, "2026-10-12 10:05"],
@@ -179,7 +179,7 @@ def test_csv_export(bob):
         zofia + ["Dan Spoza", "", "tylko komentarz", "2026-10-12 10:30"],
         adam + ["Alicja", "3", "komentarz-alicji\nżółć", "2026-10-12 10:05"],
         adam + ["Bartek", "9", "SEKRET-BARTKA", "2026-10-12 10:05"],
-        ["Wiktor Trzeci", "wiktor@example.com", "5.00", "1", GHOST, "5", "'-minus na start", "2026-10-12 10:05"],
+        ["Wiktor Trzeci", "wiktor@example.com", "5,00", "1", GHOST, "5", "'-minus na start", "2026-10-12 10:05"],
         ["Dawid Dyskowy", "dawid@example.com", "", "0", "", "", "", ""],
     ]
 

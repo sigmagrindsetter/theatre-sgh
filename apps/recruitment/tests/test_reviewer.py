@@ -94,6 +94,7 @@ def row(notion, page_id):
 def test_list_shows_candidates_sorted_with_own_status_and_progress(alice):
     response = alice.get("/")
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
     html = response.text
     assert html.index("Adam Pierwszy") < html.index("Zofia Druga") < html.index("Dawid Dyskowy")
     assert "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg" in html
@@ -113,7 +114,9 @@ def test_board_member_sees_board_link(notion):
 
 
 def test_card_restores_own_grade(alice):
-    html = alice.get(f"/k/{X}").text
+    response = alice.get(f"/k/{X}")
+    assert response.headers["cache-control"] == "no-store"
+    html = response.text
     assert "Adam Pierwszy" in html and "ada@example.com" in html and "https://youtu.be/aaaaaaaaaaa?si=x" in html
     assert 'src="https://www.youtube-nocookie.com/embed/aaaaaaaaaaa"' in html
     assert f'data-id="{X}"' in html and 'data-ocena="3"' in html
