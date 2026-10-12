@@ -343,7 +343,7 @@ flowchart LR
 | M2 schema | **done** 2026-10-12 | `panel-setup` green; Kandydaci and Oceny are the only databases directly under "Ściśle tajne"; rollups `Średnia` (average) and `Liczba ocen` (not_empty) over the relation `Oceny` |
 | M3 ingest | **done** 2026-10-12 | The Sheet had 33 rows, 13 since 2026-09-01, 13 distinct e-mails, 12 with a video link. Manual `POST /internal/ingest`: 12 created, 1 skipped (row 22, no link), 0 errors; second call 0 created, 12 existing. Kandydaci: 12 pages, no duplicate e-mails, the same e-mail set as the Sheet, all YouTube with player, `Zdjęcie` and cover. Scheduler (OIDC): 22:50 tick got 503 before M2 (expected), 23:00 tick 200 with 0 created |
 | M4 OAuth dry run | **done** 2026-10-12 | Board member signed in on the deployed app through the consent screen and page picker (§9 item 1), landed on `/` as board (name, `Zarząd` link, 12 candidates with thumbnails); logout and a second sign-in worked; the app's access log shows `/auth/callback` without its query string |
-| M5, U7–U9 | open | M5 privacy test: you, on production at go-live; U7 Apps Script trigger (`apps_script/README.md`); delete the scratch page (§9 item 4) before U8 |
+| M5, U7–U9 | open | M5 privacy test: you, on production at go-live; U7 Apps Script trigger (`apps_script/README.md`); scratch page already deleted (§9 item 4) |
 
 Suggested calendar: **day 1** C1–C4, C6, C7 in parallel PRs; you do U1, U2, then U3–U5 as soon as
 C1 is merged → M1 the same day. **Day 2** C5, C8; M2, M3, M4. **Day 3** C9, C10; U6, U7, M5.
@@ -386,7 +386,7 @@ C1 is merged → M1 the same day. **Day 2** C5, C8; M2, M3, M4. **Day 3** C9, C1
    ours is 29 characters), update the redirect URI after M1.
 3. `allUsers` invoker binding: set by the deploy workflow; if an org policy ever blocks it (not the
    case for this standalone project), the fallback is Cloud Run's integrated IAP.
-4. Before go-live: delete the scratch page used for local runs (child of "Ściśle tajne", `3f73f416…6069b`); it holds copies of the 2026 candidates.
+4. ~~Before go-live: delete the scratch page used for local runs~~ Done 2026-10-12: the scratch page (`3f73f416…6069b`, copies of 9 candidates) is in Notion's trash (restorable for 30 days); "Ściśle tajne" holds only Kandydaci and Oceny.
 
 ## 10. Decision log (why not the alternatives)
 
