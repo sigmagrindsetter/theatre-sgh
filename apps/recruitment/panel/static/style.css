@@ -9,3 +9,9 @@ footer { max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: var(--mute
 a { color: var(--accent); }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+nav { display: flex; align-items: center; gap: .75rem; }
+nav .who { color: var(--muted); }
+nav form { margin: 0; }
+button { font: inherit; padding: .3rem .7rem; border: 1px solid var(--line); border-radius: 6px;
+         background: #fff; color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--accent); }

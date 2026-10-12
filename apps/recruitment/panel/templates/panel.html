@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block nav %}
+<span class="who">{{ user.name }}</span>
+{% if user.board %}<a href="/zarzad">Zarząd</a>{% endif %}
+{% include "_logout.html" %}
+{% endblock %}

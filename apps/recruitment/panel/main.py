@@ -5,12 +5,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from panel import ingest
+from panel import auth, ingest
 from panel.web import templates
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(ingest.router)
+app.include_router(auth.router)
+app.add_exception_handler(auth.AuthError, auth.auth_error_handler)
 
 
 @app.get("/healthz")
