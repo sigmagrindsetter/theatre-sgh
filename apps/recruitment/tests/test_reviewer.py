@@ -57,6 +57,7 @@ def notion(monkeypatch):
     monkeypatch.setattr(notion_dbs, "_ids", {config.KANDYDACI_TITLE: KANDYDACI, config.OCENY_TITLE: OCENY})
     monkeypatch.setattr(auth, "_members", {"at": None, "by_person": {}})
     monkeypatch.setattr(store, "_candidates", {"at": None, "list": []})
+    monkeypatch.setattr(store, "_graded", {"at": None, "by_user": {}})
     monkeypatch.setattr(store, "_page_ids", {})
     monkeypatch.setattr(store, "_locks", {})
     for uid, name, active, board in [(ALICE, "Alicja", True, False), (BOB, "Bartek", True, True),
@@ -183,6 +184,19 @@ def test_progress_returns_counts_only(notion):
     rows = store.progress()
     assert all(set(r) == {"name", "graded", "total"} for r in rows)
     assert [r["name"] for r in rows] == ["Alicja", "Bartek", "Celina"]
+
+
+def test_progress_scans_oceny_once_a_minute_and_counts_own_saves_at_once(alice, notion):
+    def alicja():
+        return next(r["graded"] for r in store.progress() if r["name"] == "Alicja")
+
+    assert alicja() == 1
+    scans = len(notion.calls_of("query"))
+    assert alice.put(f"/api/oceny/{Y}", json={"ocena": 7, "komentarz": ""}, headers=SAME_ORIGIN).status_code == 200
+    assert alicja() == 2  # the new row still lags in queries
+    assert alice.put(f"/api/oceny/{X}", json={"ocena": None, "komentarz": ""}, headers=SAME_ORIGIN).status_code == 200
+    assert alicja() == 1
+    assert [c for c in notion.calls_of("query")[scans:] if c[1] == OCENY and "Ocena" in str(c)] == []
 
 
 def test_first_save_creates_and_later_saves_update_despite_query_lag(alice, notion):

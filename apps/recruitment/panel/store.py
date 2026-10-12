@@ -1,4 +1,4 @@
-"""Every Notion read of the panel and the Oceny upsert. Grades are always scoped to the session user."""
+"""Every Notion read of the panel and the Oceny upsert. Grades are user-scoped, except board-only all_grades."""
 import re
 import threading
 import time
@@ -22,6 +22,8 @@ GONE = (APIErrorCode.ObjectNotFound, APIErrorCode.ValidationError)
 
 _candidates = {"at": None, "list": []}
 _candidates_lock = threading.Lock()
+_graded = {"at": None, "by_user": {}}
+_graded_lock = threading.Lock()
 # Klucz -> Oceny page id: right after a create the row is missing from queries for a while
 _page_ids = {}
 _locks = {}
@@ -216,18 +218,63 @@ def save_grade(user, cid, ocena, komentarz):
         else:
             page = client.pages.create(parent={"database_id": database_id(config.OCENY_TITLE)}, properties=properties)
             _page_ids[key] = page["id"]
+    with _graded_lock:
+        mine = _graded["by_user"].setdefault(user.id, set())
+        if ocena is None:
+            mine.discard(found["id"])
+        else:
+            mine.add(found["id"])
     return saved_at
+
+
+def _graded_by_user():
+    """Reviewer id -> ids of the candidates they graded, cached for 60 s; save_grade keeps it current."""
+    with _graded_lock:
+        now = time.monotonic()
+        if _graded["at"] is None or now - _graded["at"] >= CANDIDATES_TTL:
+            graded = defaultdict(set)
+            has_grade = {"property": "Ocena", "number": {"is_not_empty": True}}
+            for page in _query_all(database_id(config.OCENY_TITLE), filter=has_grade):
+                cid, _, uid = _text(page["properties"].get("Klucz")).partition("|")
+                graded[uid].add(cid)
+            _graded["by_user"], _graded["at"] = dict(graded), now
+        return _graded["by_user"]
 
 
 def progress():
     """Graded/total per active member. Counts only: no grade or comment leaves this function."""
     ids = {c["id"] for c in candidates()}
-    graded = defaultdict(set)
-    has_grade = {"property": "Ocena", "number": {"is_not_empty": True}}
-    for page in _query_all(database_id(config.OCENY_TITLE), filter=has_grade):
-        cid, _, uid = _text(page["properties"].get("Klucz")).partition("|")
-        if cid in ids:
-            graded[uid].add(cid)
-    rows = [{"name": m["name"], "graded": len(graded[pid]), "total": len(ids)}
+    graded = _graded_by_user()
+    rows = [{"name": m["name"], "graded": len(graded.get(pid, set()) & ids), "total": len(ids)}
             for pid, m in auth.members().items() if m["active"]]
     return sorted(rows, key=lambda r: r["name"].lower())
+
+
+def all_grades():
+    """Every reviewer's live Oceny rows of current candidates. Board only: called solely by the /zarzad routes.
+    One row per candidate and reviewer, the newest: a create resent after a Notion 5xx can leave a twin row"""
+    grades = {}
+    for page in _query_all(database_id(config.OCENY_TITLE)):
+        if page.get("archived") or page.get("in_trash"):
+            continue
+        p = page["properties"]
+        key_cid, _, key_uid = _text(p.get("Klucz")).partition("|")
+        relation = (p.get("Kandydat") or {}).get("relation") or []
+        found = candidate(relation[0]["id"] if relation else key_cid)
+        if found is None:
+            continue
+        person = ((p.get("Oceniający") or {}).get("people") or [{}])[0]
+        saved_at = _date(p.get("Ostatni zapis"))
+        row = {
+            "candidate_id": found["id"],
+            "reviewer_id": person.get("id") or key_uid,
+            "reviewer_name": person.get("name") or "",
+            "ocena": (p.get("Ocena") or {}).get("number"),
+            "komentarz": _text(p.get("Komentarz")),
+            "saved_at": saved_at,
+            "saved_local": _local(saved_at, "%Y-%m-%d %H:%M") if saved_at else "",
+        }
+        pair = (row["candidate_id"], row["reviewer_id"])
+        if pair not in grades or saved_at > grades[pair]["saved_at"]:
+            grades[pair] = row
+    return list(grades.values())
