@@ -73,7 +73,7 @@ deploy is `panel-deployer`, reachable only from GitHub Actions on `main`.
 
 - `panel-deploy.yml`: on push to `main` touching `apps/recruitment/**`, `shared/**` or the workflow (or run by hand): tests, image checks, build and push, a check that every secret has a version, deploy, the Scheduler job `panel-ingest`, a `/health` smoke test (Cloud Run's front end answers `/healthz` itself; the container check uses it locally). Pull requests run only the tests and image checks.
 - `panel-secrets.yml` (by hand): copies the five GitHub secrets into Secret Manager and destroys older versions.
-- `panel-setup.yml` (by hand): creates or completes the Notion schema under the production board page.
+- `panel-setup.yml` (by hand): creates or completes the Notion schema under the production board page, and the board's views "wg oceniającego", "wg kandydata" (Oceny) and "ranking" (Kandydaci). A view is created only when none has its name, so the board may change or delete views in Notion; a deleted one comes back on the next run.
 
 First deploy: merge → `panel-deploy` stops at the secrets check → run `panel-secrets` → re-run `panel-deploy`.
 

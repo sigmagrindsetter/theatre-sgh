@@ -1,7 +1,7 @@
 # Panel oceny kandydatów 2026 — specification
 
-Status: C1–C10 implemented on branch `panel` (pull request to `main`), not yet merged or deployed
-(2026-10-12). Progress in §8.1, deviations from this text in §8.2.
+Status: C1–C10 merged to `main` (PR #2) and deployed 2026-10-12; M1–M4 done; U6 views coded (PR #3);
+M5, U7 and go-live open. Progress in §8.1, deviations from this text in §8.2.
 Decisions so far: Notion workspace is on **Plus** → web app with Notion login (the only way to hide
 reviewers' grades from each other on Plus). Hosting: **Cloud Run** in GCP project `theatre-sgh`
 (billing attached 2026-10-12, 40 PLN/month budget alert in place). All code lives in GitHub
@@ -167,8 +167,8 @@ Skipped rows are not stored; `/zarzad` recomputes them from the sheet on demand.
 Security: CSRF via `state` + SameSite cookie + `Sec-Fetch-Site: same-origin` check on `PUT`;
 per-user rate limit on `PUT` (coalesced per candidate); comments never logged; bot token only on
 Cloud Run; reviewers have no Notion access to `Kandydaci`/`Oceny` (restricted subpage); `/zarzad` double-gated (app
-check + Notion sharing of the parent page). Consent-screen UX (template vs page picker) is decided
-after the OAuth dry run (M4).
+check + Notion sharing of the parent page). Consent-screen UX (template vs page picker) was decided
+after the OAuth dry run (M4): page picker (§9 item 1).
 
 ## 6. Delivery pipeline and deployment rules
 
@@ -333,14 +333,17 @@ flowchart LR
 | Task | State | Detail |
 |---|---|---|
 | U3 bootstrap | **done** | APIs enabled; Artifact Registry `panel` (europe-west1, keep last 5 / delete > 30 d); SAs `panel-runtime`, `panel-deployer`; WIF pool `github` + provider `theatre-sgh` (condition repo + `refs/heads/main`); 5 empty secrets with runtime accessor + deployer version-manager bindings; Scheduler service agent created |
-| U4 GitHub | **done** | variables `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA`, `PANEL_MIN_INSTANCES=0`; secrets `SESSION_SECRET`, `INGEST_TOKEN` (random 32 bytes). `panel-secrets.yml` still has to run once the workflow exists |
+| U4 GitHub | **done** | variables `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA`, `PANEL_MIN_INSTANCES=0`; secrets `SESSION_SECRET`, `INGEST_TOKEN` (random 32 bytes). `panel-secrets.yml` ran 2026-10-12: each of the 5 secrets has version 1 only |
 | U5 Sheet | **done** | `panel-runtime@…` added as Viewer on the responses Sheet |
-| U6 (part) | **half** | checkbox `Zarząd` added to Lista członków; nobody ticked yet — board decides who |
+| U6 | checkbox **done**, views coded | checkbox `Zarząd` added to Lista członków and ticked for 4 members (all active, each with a Person). The three views are created by `setup_notion.py` (§8.2), checked on the scratch page (created, then a second run changed nothing); in production after this PR is merged and `panel-setup` runs |
 | U1 Notion pages | **done** | "Rekrutacja X 2026" `3f73f416…5501` (reviewers) and child "Ściśle tajne" `3f73f416…083b` (board only), both connected to the integration |
 | U2 public integration | **done** 2026-10-12 (secrets `NOTION_OAUTH_CLIENT_ID`, `NOTION_OAUTH_CLIENT_SECRET` present in GitHub; connection settings themselves are verified in M4) | Developer portal `app.notion.com/developers/connections` → Build → **Public connections** → **Create new connection**. Name "Panel rekrutacyjny Teatru SGH"; development workspace Teatr SGH; installation scope **Selected workspaces only → Teatr SGH** (cannot be changed later); redirect URI `https://panel-rekrutacja-590133883335.europe-west1.run.app/auth/callback` (exact, no trailing slash); capabilities: user information **with email addresses**, content capabilities minimal (try none; fall back to *Read content* if the form or consent flow requires it); website / privacy / terms, if asked: app URL + `/privacy`, `/terms` (live after M1). Then **Configuration** tab → copy *OAuth client ID* and *OAuth client secret* into GitHub → Settings → Secrets and variables → Actions as `NOTION_OAUTH_CLIENT_ID`, `NOTION_OAUTH_CLIENT_SECRET`. If the *Authorization URL* field stays empty, say so: the app builds the URL itself, so it is not blocking |
-| C1 (part) | **half** | `infra/bootstrap.sh` written and applied; `Dockerfile` and the three workflows not yet |
-| C1–C10 | **done on `panel`**, PR open | One commit per task. 180 tests (mocked Notion and Google), mutation-checked. Run locally against a scratch page under "Ściśle tajne" (real Lista członków read-only, real Sheet): setup idempotent, ingest 9 created / 1 skipped (row 22), then 0 created; reviewer and board flows, privacy, CSRF, rate limit, logs and autosave checked over HTTP and in headless Chrome. Five review lenses plus adversarial verification; the confirmed findings are fixed. Not runnable locally: Docker (the CI test job builds the image and checks `/healthz` in the container) and real Notion sign-in (one redirect URI, so M4) |
-| M1–M5, U6–U9 | open | After the merge: `panel-secrets` → `panel-deploy` (M1) → `panel-setup` (M2) → manual ingest (M3); then M4, M5, U7 by you |
+| C1–C10 | **done**, merged to `main` 2026-10-12 (PR #2, merge `5830a25`) | One commit per task. 180 tests (mocked Notion and Google), mutation-checked. Run locally against a scratch page under "Ściśle tajne" (real Lista członków read-only, real Sheet): setup idempotent, ingest 9 created / 1 skipped (row 22), then 0 created; reviewer and board flows, privacy, CSRF, rate limit, logs and autosave checked over HTTP and in headless Chrome. Five review lenses plus adversarial verification; the confirmed findings are fixed. Not runnable locally: Docker (the CI test job builds the image and checks `/healthz` in the container) and real Notion sign-in (one redirect URI, so M4) |
+| M1 first deploy | **done** 2026-10-12 | First `panel-deploy` run stopped at the secrets check as designed; `panel-secrets` → re-run green (tests, image checks, push, deploy, Scheduler job, smoke test). `GET /health` 200 on the deterministic URL `https://panel-rekrutacja-590133883335.europe-west1.run.app` (`/healthz` there is Google's 404, §8.2); revision `panel-rekrutacja-00001`, runs as `panel-runtime`, 512 MiB, max 1 instance; `/` and `/zarzad` redirect to sign-in; `/auth/login` leads to Notion's consent page with the expected client id and redirect URI |
+| M2 schema | **done** 2026-10-12 | `panel-setup` green; Kandydaci and Oceny are the only databases directly under "Ściśle tajne"; rollups `Średnia` (average) and `Liczba ocen` (not_empty) over the relation `Oceny` |
+| M3 ingest | **done** 2026-10-12 | The Sheet had 33 rows, 13 since 2026-09-01, 13 distinct e-mails, 12 with a video link. Manual `POST /internal/ingest`: 12 created, 1 skipped (row 22, no link), 0 errors; second call 0 created, 12 existing. Kandydaci: 12 pages, no duplicate e-mails, the same e-mail set as the Sheet, all YouTube with player, `Zdjęcie` and cover. Scheduler (OIDC): 22:50 tick got 503 before M2 (expected), 23:00 tick 200 with 0 created |
+| M4 OAuth dry run | **done** 2026-10-12 | Board member signed in on the deployed app through the consent screen and page picker (§9 item 1), landed on `/` as board (name, `Zarząd` link, 12 candidates with thumbnails); logout and a second sign-in worked; the app's access log shows `/auth/callback` without its query string |
+| M5, U7–U9 | open | M5 privacy test: you, on production at go-live; U7 Apps Script trigger (`apps_script/README.md`); scratch page already deleted (§9 item 4) |
 
 Suggested calendar: **day 1** C1–C4, C6, C7 in parallel PRs; you do U1, U2, then U3–U5 as soon as
 C1 is merged → M1 the same day. **Day 2** C5, C8; M2, M3, M4. **Day 3** C9, C10; U6, U7, M5.
@@ -365,18 +368,25 @@ C1 is merged → M1 the same day. **Day 2** C5, C8; M2, M3, M4. **Day 3** C9, C1
 | §5 board | averages and CSV | one row per candidate and reviewer (newest `Ostatni zapis`); `Liczba ocen` and averages count numeric grades only; CSV is `;`-separated with a decimal comma, UTF-8 BOM and a formula guard | a page create retried after a Notion 5xx by the shared `RetryingTransport` can leave a twin row (`shared/auth.py` is outside the change surface); Excel with Polish settings splits only `;` files |
 | §5 reviewer UI | autosave | reviewer pages are `no-store`; links and logout wait for a pending save; the list reloads when restored from the back/forward cache; progress counts are cached 60 s and updated by the reviewer's own saves | otherwise the list showed the previous grade right after grading, and a logout within 1.5 s lost the change |
 | §5 | — | Sheet reads time out after 30 s; Lista członków is re-read at sign-in for an unknown or inactive user | a stalled read would hold the ingest lock; a member ticked a minute ago can sign in at once |
+| U6 | the board saves three Notion views by hand | `setup_notion.py` (so `panel-setup`) creates them through the Notion Views API (`POST /v1/views`); only those calls use Notion-Version `2026-03-11`, the rest stays on notion-client's default; a view is created only when none has its name | you asked for the views to be made for you; the API needs Notion-Version 2025-09-03 or later |
 | §7 | `requirements.txt` | adds `tzdata` | `python:3.11-slim` has no zoneinfo data for Europe/Warsaw |
 | — | — | `package.json` still has the npm script for the removed `apps/recruitment/sync.py` | outside the change surface; remove it separately if wanted |
 | — | — | Cloud Run's own request log keeps full URLs, including the single-use OAuth `code` | the app cannot scrub the platform log; the code is already exchanged |
 
 ## 9. Open items
 
-1. Consent-screen UX (template vs page picker) — after M4. Outcome: _not yet run_.
+1. Consent-screen UX (template vs page picker) — after M4. Outcome (M4, 2026-10-12): **page picker**.
+   Notion shows "Connect with Panel rekrutacyjny Teatru SGH" with the permissions "View pages you
+   select" and "View workspace users and their emails" → **Select pages** → page tree → **Allow
+   access** → back on `/`. Decision: keep the picker, no template (a template would duplicate a page
+   into the workspace at every sign-in). The app discards the user's token, so the pages a reviewer
+   selects are never read; the go-live note tells reviewers to leave only "Rekrutacja X 2026" ticked
+   and click **Allow access**.
 2. If Google does not assign the deterministic URL (name too long is the only documented cause;
    ours is 29 characters), update the redirect URI after M1.
 3. `allUsers` invoker binding: set by the deploy workflow; if an org policy ever blocks it (not the
    case for this standalone project), the fallback is Cloud Run's integrated IAP.
-4. Before go-live: delete the scratch page used for local runs (child of "Ściśle tajne", `3f73f416…6069b`); it holds copies of the 2026 candidates.
+4. ~~Before go-live: delete the scratch page used for local runs~~ Done 2026-10-12: the scratch page (`3f73f416…6069b`, copies of 9 candidates) is in Notion's trash (restorable for 30 days); "Ściśle tajne" holds only Kandydaci and Oceny.
 
 ## 10. Decision log (why not the alternatives)
 
