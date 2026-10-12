@@ -9,6 +9,10 @@ The script runs as the Google account of the person who adds the trigger in step
 person needs **edit access to the responses Sheet**. If they later lose that access, the trigger
 stops; someone else with edit access then repeats step 3.
 
+**Installed 2026-10-13** as teatr.sgh@gmail.com: project "Panel rekrutacyjny - import" bound to the
+responses Sheet (Sheet → **Extensions → Apps Script**), both Script Properties set, one `onFormSubmit`
+trigger. Use the steps below only to reinstall it.
+
 ## Install (once per Sheet)
 
 1. Open the form's responses Sheet → **Extensions → Apps Script**. In the editor, delete the
