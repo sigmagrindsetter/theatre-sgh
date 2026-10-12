@@ -1,16 +1,27 @@
 """
-Recruitment app configuration
-IDs are stored in code (not secrets)
+Recruitment review panel configuration (REVIEW_PANEL_SPEC.md §6.4)
+IDs are stored in code (not secrets); each value can be overridden by an env var of the same name
 """
+import os
 
-# Google Sheet ID (from URL)
-SHEET_ID = "1kBhtnYQNuuunlXxdDehMl85Pg6Q215W7w03qmaXCPGM"
+# Notion pages created by the board (§4): "Rekrutacja X 2026" and its restricted child "Ściśle tajne"
+PARENT_PAGE_ID = os.getenv("PARENT_PAGE_ID", "3f73f4160a3780f5afc1d195032e5501")
+BOARD_PAGE_ID = os.getenv("BOARD_PAGE_ID", "3f73f4160a37806b8fa9feb5cfdb083b")
 
-# Notion Database ID for candidates (from URL)
-DATABASE_ID = "2893f4160a378020af8fcbb023071263"
+# Databases under the board page, found by title
+KANDYDACI_TITLE = "Kandydaci"
+OCENY_TITLE = "Oceny"
 
-# Notion Database ID for evaluators/members (from URL)
-EVALUATORS_DATABASE_ID = "18a3f4160a3780c884bcd88c8e0c49b7"
+# Lista członków (read-only): Person, Aktywny członek, Zarząd
+MEMBERS_DATABASE_ID = os.getenv("MEMBERS_DATABASE_ID", "18a3f4160a3780c884bcd88c8e0c49b7")
 
-# Optional: specific sheet name (defaults to first sheet)
-SHEET_NAME = None
+# Google Form responses; the sheet is reused from 2025, hence the cutoff
+SHEET_ID = os.getenv("SHEET_ID", "1kBhtnYQNuuunlXxdDehMl85Pg6Q215W7w03qmaXCPGM")
+SHEET_NAME = os.getenv("SHEET_NAME") or None  # None = first sheet
+CUTOFF_DATE = os.getenv("CUTOFF_DATE", "2026-09-01")
+
+# Public URL of the Cloud Run service; OAuth redirect URI and Scheduler OIDC audience derive from it
+BASE_URL = os.getenv("BASE_URL", "https://panel-rekrutacja-590133883335.europe-west1.run.app")
+
+# Identity whose Google OIDC token may call POST /internal/ingest (Cloud Scheduler)
+SCHEDULER_SA_EMAIL = os.getenv("SCHEDULER_SA_EMAIL", "panel-runtime@theatre-sgh.iam.gserviceaccount.com")
