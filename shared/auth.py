@@ -1,6 +1,7 @@
 import os
 import time
 from dotenv import load_dotenv
+import google.auth
 from google.oauth2.service_account import Credentials
 import gspread
 import httpx
@@ -18,7 +19,18 @@ class GoogleAuth:
             client_email = os.getenv('GOOGLE_CLIENT_EMAIL')
             private_key = os.getenv('GOOGLE_PRIVATE_KEY')
 
-            if not client_email or not private_key:
+            scopes = [
+                'https://www.googleapis.com/auth/spreadsheets.readonly',
+                'https://www.googleapis.com/auth/drive',
+            ]
+
+            if not private_key:
+                # Application Default Credentials, e.g. the Cloud Run service account
+                creds, _ = google.auth.default(scopes=scopes)
+                cls._client = gspread.authorize(creds)
+                return cls._client
+
+            if not client_email:
                 raise ValueError(
                     "Missing Google credentials. Set GOOGLE_CLIENT_EMAIL and "
                     "GOOGLE_PRIVATE_KEY in .env file"
@@ -40,11 +52,6 @@ class GoogleAuth:
                 "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}",
                 "universe_domain": "googleapis.com"
             }
-
-            scopes = [
-                'https://www.googleapis.com/auth/spreadsheets.readonly',
-                'https://www.googleapis.com/auth/drive',
-            ]
 
             creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
             cls._client = gspread.authorize(creds)
