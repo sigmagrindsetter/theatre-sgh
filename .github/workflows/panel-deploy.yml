@@ -1,0 +1,169 @@
+name: Panel deploy
+
+# Recruitment review panel (apps/recruitment/REVIEW_PANEL_SPEC.md §6.3): tests and image check on
+# every run; build, push and deploy to Cloud Run only from main. GCP access via WIF, no key files.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/recruitment/**'
+      - 'shared/**'
+      - '.github/workflows/panel-deploy.yml'
+  pull_request:
+    paths:
+      - 'apps/recruitment/**'
+      - 'shared/**'
+      - '.github/workflows/panel-deploy.yml'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: theatre-sgh
+  REGION: europe-west1
+  SERVICE: panel-rekrutacja
+  IMAGE: europe-west1-docker.pkg.dev/theatre-sgh/panel/panel-rekrutacja
+  RUNTIME_SA: panel-runtime@theatre-sgh.iam.gserviceaccount.com
+  BASE_URL: https://panel-rekrutacja-590133883335.europe-west1.run.app
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: apps/recruitment/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r apps/recruitment/requirements.txt pytest==9.0.3
+
+      - name: Run tests
+        run: pytest -q apps/recruitment/tests
+
+      - name: Build image
+        run: |
+          # Canary .env files must not reach the image (Dockerfile.dockerignore)
+          for f in .env shared/.env apps/recruitment/.env; do echo "CANARY=1" > "$f"; done
+          docker build -f apps/recruitment/Dockerfile -t panel:ci .
+          leaked="$(docker run --rm panel:ci find /app -name '.env*')"
+          test -z "$leaked"
+          uid="$(docker run --rm panel:ci id -u)"
+          test "$uid" != 0
+
+      - name: Container answers /healthz
+        run: |
+          docker run -d --name panel -e PORT=8080 -p 127.0.0.1:8080:8080 panel:ci
+          curl -fsS --retry 30 --retry-delay 1 --retry-all-errors --max-time 5 http://127.0.0.1:8080/healthz \
+            || { docker logs panel; exit 1; }
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: panel-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        run: |
+          docker build -f apps/recruitment/Dockerfile -t "$IMAGE:$GITHUB_SHA" .
+          docker push "$IMAGE:$GITHUB_SHA"
+
+      # Cloud Run refuses a deploy that references a secret without versions
+      - name: Check that every secret has a version
+        run: |
+          missing=0
+          for name in NOTION_API_TOKEN NOTION_OAUTH_CLIENT_ID NOTION_OAUTH_CLIENT_SECRET SESSION_SECRET INGEST_TOKEN; do
+            version="$(gcloud secrets versions list "$name" --filter=state:ENABLED --limit=1 --format='value(name)')"
+            if [ -z "$version" ]; then
+              echo "::error::Secret $name has no enabled version: run panel-secrets.yml, then re-run this workflow"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
+          image: ${{ env.IMAGE }}:${{ github.sha }}
+          env_vars: BASE_URL=${{ env.BASE_URL }}
+          secrets: |-
+            NOTION_API_TOKEN=NOTION_API_TOKEN:latest
+            NOTION_OAUTH_CLIENT_ID=NOTION_OAUTH_CLIENT_ID:latest
+            NOTION_OAUTH_CLIENT_SECRET=NOTION_OAUTH_CLIENT_SECRET:latest
+            SESSION_SECRET=SESSION_SECRET:latest
+            INGEST_TOKEN=INGEST_TOKEN:latest
+          flags: >-
+            --service-account=${{ env.RUNTIME_SA }}
+            --min-instances=${{ vars.PANEL_MIN_INSTANCES || '0' }}
+            --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80
+            --cpu-boost --allow-unauthenticated
+
+      # The OAuth redirect URI and the Scheduler audience use BASE_URL; the reported URL may be the
+      # legacy hash URL of the same service, so it is only compared, never used
+      - name: Compare service URL
+        env:
+          DEPLOYED_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          echo "Cloud Run URL: $DEPLOYED_URL"
+          if [ "$DEPLOYED_URL" != "$BASE_URL" ]; then
+            echo "::warning::Cloud Run reports $DEPLOYED_URL, the app is configured for $BASE_URL"
+          fi
+
+      # The app accepts the Scheduler's OIDC token only if aud == config.BASE_URL (no trailing slash)
+      - name: Ensure Cloud Scheduler job panel-ingest
+        run: |
+          if gcloud scheduler jobs describe panel-ingest --location="$REGION" > /dev/null 2>&1; then
+            verb=update
+          else
+            verb=create
+          fi
+          gcloud scheduler jobs "$verb" http panel-ingest \
+            --location="$REGION" \
+            --schedule="*/10 8-23 * * *" \
+            --time-zone=Europe/Warsaw \
+            --uri="$BASE_URL/internal/ingest" \
+            --http-method=POST \
+            --oidc-service-account-email="$RUNTIME_SA" \
+            --oidc-token-audience="$BASE_URL" \
+            --attempt-deadline=300s
+
+      - name: Smoke test
+        # /health, not /healthz: Cloud Run's front end answers paths ending in "z" itself
+        run: curl -fsS --retry 5 --retry-all-errors "$BASE_URL/health"

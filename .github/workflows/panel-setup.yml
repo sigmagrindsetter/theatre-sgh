@@ -1,0 +1,33 @@
+name: Panel setup (Notion)
+
+# Creates the Kandydaci and Oceny databases under the board page, idempotently
+# (apps/recruitment/REVIEW_PANEL_SPEC.md §4, §6.3). Needs only the Notion integration token.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: apps/recruitment/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r apps/recruitment/requirements.txt
+
+      - name: Create Notion schema
+        env:
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+        run: python apps/recruitment/setup_notion.py

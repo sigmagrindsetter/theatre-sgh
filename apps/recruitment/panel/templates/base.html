@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Panel rekrutacyjny{% endblock %} · Teatr SGH</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">Panel rekrutacyjny Teatru SGH</a>
+    <nav>{% block nav %}{% endblock %}</nav>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <footer><a href="/privacy">Prywatność</a> · <a href="/terms">Zasady</a></footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

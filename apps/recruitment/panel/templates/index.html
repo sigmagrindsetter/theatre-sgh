@@ -1,0 +1,34 @@
+{% extends "panel.html" %}
+{% block title %}Kandydaci{% endblock %}
+{% block content %}
+<h1>Kandydaci</h1>
+{% if rows %}
+<table class="candidates">
+  <thead><tr><th></th><th>Imię i nazwisko</th><th>Obszary</th><th>Rok studiów</th><th>Twoja ocena</th></tr></thead>
+  <tbody>
+  {% for c, grade in rows %}
+    <tr>
+      <td>{% if c.thumbnail %}<a href="/k/{{ c.id }}"><img class="thumb" src="{{ c.thumbnail }}" alt="" loading="lazy"></a>{% endif %}</td>
+      <td><a href="/k/{{ c.id }}">{{ c.name }}</a></td>
+      <td>{{ c.obszary | join(", ") }}</td>
+      <td>{{ c.rok }}</td>
+      <td>{% if grade and grade.ocena is not none %}{{ grade.ocena }}/10{% else %}<span class="muted">brak oceny</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Nie ma jeszcze kandydatów.</p>
+{% endif %}
+
+<h2>Postęp oceniania</h2>
+<table class="progress">
+  <thead><tr><th>Oceniający</th><th>Ocenieni kandydaci</th></tr></thead>
+  <tbody>
+  {% for p in progress %}
+    <tr><td>{{ p.name }}</td><td>{{ p.graded }}/{{ p.total }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+{% block scripts %}<script src="/static/app.js" defer></script>{% endblock %}
