@@ -1,7 +1,7 @@
 # Panel oceny kandydatów 2026 — specification
 
-Status: C1–C10 merged to `main` (PR #2) and deployed 2026-10-12; M1–M3 done, M4, M5, U6 views,
-U7 and go-live open. Progress in §8.1, deviations from this text in §8.2.
+Status: C1–C10 merged to `main` (PR #2) and deployed 2026-10-12; M1–M4 done, M5, U6 views, U7
+and go-live open. Progress in §8.1, deviations from this text in §8.2.
 Decisions so far: Notion workspace is on **Plus** → web app with Notion login (the only way to hide
 reviewers' grades from each other on Plus). Hosting: **Cloud Run** in GCP project `theatre-sgh`
 (billing attached 2026-10-12, 40 PLN/month budget alert in place). All code lives in GitHub
@@ -167,8 +167,8 @@ Skipped rows are not stored; `/zarzad` recomputes them from the sheet on demand.
 Security: CSRF via `state` + SameSite cookie + `Sec-Fetch-Site: same-origin` check on `PUT`;
 per-user rate limit on `PUT` (coalesced per candidate); comments never logged; bot token only on
 Cloud Run; reviewers have no Notion access to `Kandydaci`/`Oceny` (restricted subpage); `/zarzad` double-gated (app
-check + Notion sharing of the parent page). Consent-screen UX (template vs page picker) is decided
-after the OAuth dry run (M4).
+check + Notion sharing of the parent page). Consent-screen UX (template vs page picker) was decided
+after the OAuth dry run (M4): page picker (§9 item 1).
 
 ## 6. Delivery pipeline and deployment rules
 
@@ -342,7 +342,8 @@ flowchart LR
 | M1 first deploy | **done** 2026-10-12 | First `panel-deploy` run stopped at the secrets check as designed; `panel-secrets` → re-run green (tests, image checks, push, deploy, Scheduler job, smoke test). `GET /health` 200 on the deterministic URL `https://panel-rekrutacja-590133883335.europe-west1.run.app` (`/healthz` there is Google's 404, §8.2); revision `panel-rekrutacja-00001`, runs as `panel-runtime`, 512 MiB, max 1 instance; `/` and `/zarzad` redirect to sign-in; `/auth/login` leads to Notion's consent page with the expected client id and redirect URI |
 | M2 schema | **done** 2026-10-12 | `panel-setup` green; Kandydaci and Oceny are the only databases directly under "Ściśle tajne"; rollups `Średnia` (average) and `Liczba ocen` (not_empty) over the relation `Oceny` |
 | M3 ingest | **done** 2026-10-12 | The Sheet had 33 rows, 13 since 2026-09-01, 13 distinct e-mails, 12 with a video link. Manual `POST /internal/ingest`: 12 created, 1 skipped (row 22, no link), 0 errors; second call 0 created, 12 existing. Kandydaci: 12 pages, no duplicate e-mails, the same e-mail set as the Sheet, all YouTube with player, `Zdjęcie` and cover. Scheduler (OIDC): 22:50 tick got 503 before M2 (expected), 23:00 tick 200 with 0 created |
-| M4, M5, U6 views, U7–U9 | open (you) | M4 OAuth dry run → §9 item 1; U6 views; M5 privacy test; U7 Apps Script trigger (`apps_script/README.md`); delete the scratch page (§9 item 4) before U8 |
+| M4 OAuth dry run | **done** 2026-10-12 | Board member signed in on the deployed app through the consent screen and page picker (§9 item 1), landed on `/` as board (name, `Zarząd` link, 12 candidates with thumbnails); logout and a second sign-in worked; the app's access log shows `/auth/callback` without its query string |
+| M5, U6 views, U7–U9 | open (you) | U6 views; M5 privacy test; U7 Apps Script trigger (`apps_script/README.md`); delete the scratch page (§9 item 4) before U8 |
 
 Suggested calendar: **day 1** C1–C4, C6, C7 in parallel PRs; you do U1, U2, then U3–U5 as soon as
 C1 is merged → M1 the same day. **Day 2** C5, C8; M2, M3, M4. **Day 3** C9, C10; U6, U7, M5.
@@ -373,7 +374,13 @@ C1 is merged → M1 the same day. **Day 2** C5, C8; M2, M3, M4. **Day 3** C9, C1
 
 ## 9. Open items
 
-1. Consent-screen UX (template vs page picker) — after M4. Outcome: _not yet run_.
+1. Consent-screen UX (template vs page picker) — after M4. Outcome (M4, 2026-10-12): **page picker**.
+   Notion shows "Connect with Panel rekrutacyjny Teatru SGH" with the permissions "View pages you
+   select" and "View workspace users and their emails" → **Select pages** → page tree → **Allow
+   access** → back on `/`. Decision: keep the picker, no template (a template would duplicate a page
+   into the workspace at every sign-in). The app discards the user's token, so the pages a reviewer
+   selects are never read; the go-live note tells reviewers to leave only "Rekrutacja X 2026" ticked
+   and click **Allow access**.
 2. If Google does not assign the deterministic URL (name too long is the only documented cause;
    ours is 29 characters), update the redirect URI after M1.
 3. `allUsers` invoker binding: set by the deploy workflow; if an org policy ever blocks it (not the
