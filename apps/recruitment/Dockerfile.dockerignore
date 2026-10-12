@@ -1,0 +1,17 @@
+# BuildKit reads this file instead of a root .dockerignore for apps/recruitment/Dockerfile.
+# The context is the repo root: send only shared/ and apps/recruitment/, so the developer's
+# .env, .git, venvs, PDFs and the gha-creds-*.json written by google-github-actions/auth stay out.
+*
+!shared/
+!apps/recruitment/
+
+**/.env*
+**/gha-creds-*.json
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/*.pdf
+apps/recruitment/Dockerfile*
+apps/recruitment/tests
+apps/recruitment/infra
+apps/recruitment/apps_script
