@@ -122,7 +122,8 @@ def index(request: Request, user: User = Depends(require_reviewer)):
     sections = defaultdict(list)
     for c in store.candidates():
         group = chosen.get(c["id"], NO_GROUP) if chosen is not None else None
-        sections[group].append((c, grades.get(c["id"]), averages.get(c["id"]), stage1.get(c["id"])))
+        sections[group].append((c, grades.get(c["id"]), averages.get(c["id"]), stage1.get(c["id"]),
+                                store.comments(user, c["id"])))
     ordered = sorted(sections.items(), key=lambda item: (item[0] in (NO_GROUP, None), item[0] or ""))
     context = {"user": user, "sections": ordered, "signups_failed": chosen is None, "unmatched": unmatched,
                "progress": store.progress()}
@@ -139,8 +140,7 @@ def card(request: Request, cid: str, user: User = Depends(require_reviewer)):
                "group": chosen.get(candidate["id"], NO_GROUP) if chosen is not None else None,
                "average": store.averages().get(candidate["id"]),
                "stage1_average": store.stage1_averages().get(candidate["id"]),
-               "others": store.others_comments(user, candidate["id"]),
-               "stage1": store.stage1_comments(candidate["id"])}
+               "comments": store.comments(user, candidate["id"])}
     return templates.TemplateResponse(request, "candidate.html", context, headers=NO_STORE)
 
 

@@ -30,3 +30,6 @@ dl.fields dd { margin: 0; overflow-wrap: anywhere; }
 #status.error { color: var(--accent); font-weight: 600; }
 ul.comments li { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: .5rem; }
 td.raw { overflow-wrap: anywhere; }
+tr.candidate td { border-bottom: 0; }
+tr.comments-row td { padding-top: 0; }
+tr.comments-row summary { cursor: pointer; color: var(--accent); }

@@ -143,13 +143,15 @@ def test_drive_file_gets_the_drive_player_and_thumbnail(notion, alice):
 
 
 def test_privacy_another_reviewers_grade_shows_only_in_the_average_and_comment_without_author(alice):
-    assert "SEKRET-BARTKA" not in alice.get("/").text
-    for path in (f"/k/{X}", f"/k/{X}?uid={BOB}", f"/k/{X}?user={BOB}"):
+    for path in ("/", f"/k/{X}", f"/k/{X}?uid={BOB}", f"/k/{X}?user={BOB}"):
         html = alice.get(path).text
         assert "<li>SEKRET-BARTKA</li>" in html
-        assert "Bartek" not in html and BOB not in html and "10:05" not in html.split('id="others"')[1]
-        assert "9/10" not in html
+        assert BOB not in html and "9/10" not in html
         assert 'data-ocena="9" aria-pressed="true"' not in html
+        if path == "/":
+            assert "10:05" not in html and html.count("SEKRET-BARTKA") == 1
+            continue
+        assert "Bartek" not in html and "10:05" not in html.split('id="comments"')[1]
         assert f'<section id="grade" data-id="{X}" data-ocena="3">' in html
 
 

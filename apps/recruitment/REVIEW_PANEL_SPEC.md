@@ -419,8 +419,10 @@ where they differ.
   Kandydaci). `Oceny` (stage I) is kept unchanged as the record; its grades are never shown.
 - **Visibility** (user's decision): each reviewer edits their own stage II grade and comment; on a card
   they also see the average of every reviewer's stage II grades (their own included), the average of the
-  stage I grades, the other reviewers' stage II comments and all stage I comments, each comment without
-  author or time and sorted by text. The list shows both averages per candidate. Averages only, never the
+  stage I grades, and one list of comments: the other reviewers' stage II comments and all stage I
+  comments mixed, without author, time or stage, sorted by text (user, 2026-10-20: "treat all the
+  comments the same"). The list shows both averages per candidate and, under each, a collapsed
+  "Komentarze" toggle (`<details>`, no script) with the same comments as the card. Averages only, never the
   number of grades (user, 2026-10-20). With few grades an average can still reveal a single grade;
   accepted with the request.
 - **Groups**: from the interview sign-ups ("Zgłoszenia na rozmowę rekrutacyjną",

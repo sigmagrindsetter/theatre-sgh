@@ -313,13 +313,15 @@ def _anonymous(comments):
     return sorted((c.strip() for c in comments if c.strip()), key=_fold)
 
 
-def others_comments(user, cid):
-    """Stage II comments on the candidate by every reviewer except the session user, without author or time."""
-    return _anonymous(row["komentarz"] for row in _rows_ii() if row["cid"] == cid and row["uid"] != user.id)
+def comments(user, cid):
+    """Every comment on the candidate except the session user's stage II one (it is in their text box): stage II
+    and stage I in one list, without author, time or stage"""
+    stage2 = [row["komentarz"] for row in _rows_ii() if row["cid"] == cid and row["uid"] != user.id]
+    return _anonymous(stage2 + _stage1_data()["comments"].get(cid, []))
 
 
 def _stage1_data():
-    """Stage I comments per candidate without author, time or grade, and stage I averages; cached for 10 minutes."""
+    """Stage I comments per candidate, and stage I averages; cached for 10 minutes."""
     with _stage1_lock:
         now = time.monotonic()
         if _stage1["at"] is None or now - _stage1["at"] >= STAGE1_TTL:
@@ -331,10 +333,6 @@ def _stage1_data():
             _stage1["averages"] = _averages(rows)
             _stage1["at"] = now
         return _stage1
-
-
-def stage1_comments(cid):
-    return _stage1_data()["comments"].get(cid, [])
 
 
 def stage1_averages():

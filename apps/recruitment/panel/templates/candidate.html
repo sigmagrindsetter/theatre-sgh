@@ -46,25 +46,20 @@
     Zmiany zapisują się automatycznie.</p>
 </section>
 
-<section id="others">
-  <h2>II etap – wszyscy oceniający</h2>
-  <p>Średnia ocen (z Twoją): <strong>{{ show_average(average) }}</strong></p>
-  <h3>Komentarze pozostałych oceniających</h3>
-  {% if others %}
-  <ul class="comments">{% for k in others %}<li>{{ k }}</li>{% endfor %}</ul>
-  {% else %}
-  <p class="muted">Brak komentarzy innych oceniających.</p>
-  {% endif %}
+<section id="averages">
+  <h2>Średnie ocen</h2>
+  <dl class="fields">
+    <dt>II etap (z Twoją)</dt><dd><strong>{{ show_average(average) }}</strong></dd>
+    <dt>I etap</dt><dd><strong>{{ show_average(stage1_average) }}</strong></dd>
+  </dl>
 </section>
 
-<section id="stage1">
-  <h2>I etap</h2>
-  <p>Średnia ocen: <strong>{{ show_average(stage1_average) }}</strong></p>
-  <h3>Komentarze</h3>
-  {% if stage1 %}
-  <ul class="comments">{% for k in stage1 %}<li>{{ k }}</li>{% endfor %}</ul>
+<section id="comments">
+  <h2>Komentarze</h2>
+  {% if comments %}
+  <ul class="comments">{% for k in comments %}<li>{{ k }}</li>{% endfor %}</ul>
   {% else %}
-  <p class="muted">Brak komentarzy z I etapu.</p>
+  <p class="muted">Brak komentarzy.</p>
   {% endif %}
 </section>
 {% endblock %}
