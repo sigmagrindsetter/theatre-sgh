@@ -122,7 +122,8 @@ def index(request: Request, user: User = Depends(require_reviewer)):
     sections = defaultdict(list)
     for c in store.candidates():
         group = chosen.get(c["id"], NO_GROUP) if chosen is not None else None
-        sections[group].append((c, grades.get(c["id"]), averages.get(c["id"]), stage1.get(c["id"])))
+        comments = {"others": store.others_comments(user, c["id"]), "stage1": store.stage1_comments(c["id"])}
+        sections[group].append((c, grades.get(c["id"]), averages.get(c["id"]), stage1.get(c["id"]), comments))
     ordered = sorted(sections.items(), key=lambda item: (item[0] in (NO_GROUP, None), item[0] or ""))
     context = {"user": user, "sections": ordered, "signups_failed": chosen is None, "unmatched": unmatched,
                "progress": store.progress()}

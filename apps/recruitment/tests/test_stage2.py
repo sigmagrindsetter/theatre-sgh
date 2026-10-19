@@ -119,8 +119,18 @@ def test_unreadable_signups_still_list_every_candidate(alice, notion, monkeypatc
     assert "RuntimeError" in out and "secret detail" not in out
 
 
-def test_list_shows_no_comment_and_no_single_grade_of_another_reviewer(alice, notion):
+def test_list_toggles_comments_without_author_and_no_single_grade(alice, notion):
     notion.add(STAGE1, grade_props(X, BOB, 10, "STARY-KOMENTARZ"))
+    notion.add(STAGE1, grade_props(Y, CAROL, 4, "o Zofii"))
     html = alice.get("/").text
-    assert "SEKRET-BARTKA" not in html and "STARY-KOMENTARZ" not in html
-    assert "9/10" not in html and "10/10" not in html
+    x = html[html.index(f'href="/k/{X}">Adam Pierwszy'):html.index(f'href="/k/{Y}">Zofia Druga')]
+    details = x[x.index("<details>"):x.index("</details>")]
+    assert "<summary>Komentarze</summary>" in details
+    assert details.index("<li>SEKRET-BARTKA</li>") < details.index("<h3>I etap</h3>") < details.index("<li>STARY-KOMENTARZ</li>")
+    assert "komentarz-alicji" not in html  # own comment lives in the card's text box
+    assert "o Zofii" not in x and "<li>o Zofii</li>" in html
+    candidates = html.split("Postęp oceniania")[0]  # the progress table names reviewers, with counts only
+    assert "Bartek" not in candidates and "Celina" not in candidates
+    assert "9/10" not in html and "10/10" not in html and "4/10" not in html
+    z = html[html.index(f'href="/k/{Z}">Dawid Dyskowy'):]
+    assert "Brak komentarzy" in z[:z.index("</tr>", z.index("</tr>") + 1)]

@@ -11,8 +11,8 @@
 <table class="candidates">
   <thead><tr><th></th><th>Imię i nazwisko</th><th>Obszary</th><th>Rok studiów</th><th>Średnia II etap</th><th>Średnia I etap</th><th>Twoja ocena</th></tr></thead>
   <tbody>
-  {% for c, grade, stage2, stage1 in rows %}
-    <tr>
+  {% for c, grade, stage2, stage1, comments in rows %}
+    <tr class="candidate">
       <td>{% if c.thumbnail %}<a href="/k/{{ c.id }}"><img class="thumb" src="{{ c.thumbnail }}" alt="" loading="lazy"></a>{% endif %}</td>
       <td><a href="/k/{{ c.id }}">{{ c.name }}</a></td>
       <td>{{ c.obszary | join(", ") }}</td>
@@ -20,6 +20,26 @@
       <td>{{ average(stage2) }}</td>
       <td>{{ average(stage1) }}</td>
       <td>{% if grade and grade.ocena is not none %}{{ grade.ocena }}/10{% else %}<span class="muted">brak oceny</span>{% endif %}</td>
+    </tr>
+    <tr class="comments-row">
+      <td></td>
+      <td colspan="6">
+        {% if comments.others or comments.stage1 %}
+        <details>
+          <summary>Komentarze</summary>
+          {% if comments.others %}
+          <h3>II etap – pozostali oceniający</h3>
+          <ul class="comments">{% for k in comments.others %}<li>{{ k }}</li>{% endfor %}</ul>
+          {% endif %}
+          {% if comments.stage1 %}
+          <h3>I etap</h3>
+          <ul class="comments">{% for k in comments.stage1 %}<li>{{ k }}</li>{% endfor %}</ul>
+          {% endif %}
+        </details>
+        {% else %}
+        <span class="muted">Brak komentarzy</span>
+        {% endif %}
+      </td>
     </tr>
   {% endfor %}
   </tbody>
