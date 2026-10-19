@@ -5,9 +5,9 @@ them (1–10 plus a comment). It exists because Notion Plus cannot hide rows per
 [`REVIEW_PANEL_SPEC.md`](REVIEW_PANEL_SPEC.md) is the source of truth; §10 explains why it is built
 this way, §11 describes what the panel shows in stage II (interviews from 2026-10-21): only candidates invited to
 stage II, grouped by the interview group they signed up for, graded afresh; every reviewer sees the
-averages of the stage II and stage I grades (never single grades or their number), the other reviewers'
-comments without their authors, and the stage I comments without authors (on the card, and in a
-"Komentarze" toggle under each candidate on the list).
+averages of the stage II and stage I grades (never single grades or their number) and one list of all
+comments of both stages without author or stage (on the card, and in a "Komentarze" toggle under each
+candidate on the list).
 
 ## Architecture
 
