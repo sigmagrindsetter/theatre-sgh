@@ -2,19 +2,22 @@ from itertools import count
 from types import SimpleNamespace
 
 import httpx
+import pytest
 from notion_client.errors import APIResponseError
 
 import config
 import setup_notion
 
-MEMBERS = {"Imię i Nazwisko": "title", "Person": "people", "Aktywny członek": "checkbox", "Zarząd": "checkbox"}
+MEMBERS = {"Imię i Nazwisko": "title", "Person": "people", "Aktywny członek": "checkbox"}
+ZAPISY = {"Imię i nazwisko": "title", "Wybór grupy": "select", "Auto-osoba": "people"}
 
 
 class FakeNotion:
     """Just enough of the Notion API for setup_notion, including two-way relation sync and the Views API."""
 
-    def __init__(self, members=MEMBERS, board_readable=True):
+    def __init__(self, members=MEMBERS, board_readable=True, zapisy=ZAPISY):
         self.members = members
+        self.zapisy = zapisy
         self.board_readable = board_readable
         self.dbs = {}
         self.views = {}
@@ -33,6 +36,10 @@ class FakeNotion:
     def retrieve_db(self, database_id):
         if database_id == config.MEMBERS_DATABASE_ID:
             return {"properties": {name: {"type": kind} for name, kind in self.members.items()}}
+        if database_id == config.ZAPISY_DATABASE_ID:
+            if self.zapisy is None:
+                raise APIResponseError(httpx.Response(404), "Could not find database", "object_not_found")
+            return {"properties": {name: {"type": kind} for name, kind in self.zapisy.items()}}
         return self.dbs[database_id]
 
     def list_children(self, block_id, **kwargs):
@@ -64,7 +71,7 @@ class FakeNotion:
             kind = next(iter(spec))
             prop = {"id": f"p{next(self.ids)}", "type": kind, kind: dict(spec[kind])}
             self.dbs[database_id]["properties"][name] = prop
-            if kind == "relation":
+            if kind == "relation" and spec[kind]["type"] == "dual_property":
                 target = self.dbs[spec[kind]["database_id"]]["properties"]
                 synced = {"id": f"p{next(self.ids)}", "type": "relation",
                           "relation": {"database_id": database_id, "type": "dual_property",
@@ -116,19 +123,24 @@ def test_first_run_creates_schema(monkeypatch, capsys):
     assert {name: p["type"] for name, p in kandydaci.items()} == {
         "Imię i nazwisko": "title", "Email": "email", "Czas": "date", "Uczelnia": "rich_text",
         "Rok studiów": "select", "Obszary": "multi_select", "Filmik": "url", "Filmik znormalizowany": "url",
-        "Status filmiku": "select", "Zdjęcie": "files", "Oceny": "relation", "Średnia": "rollup",
-        "Liczba ocen": "rollup",
+        "Status filmiku": "select", "Zdjęcie": "files", "II etap": "checkbox", "Oceny": "relation",
+        "Średnia": "rollup", "Liczba ocen": "rollup",
     }
-    assert {name: p["type"] for name, p in oceny.items()} == {
-        "Nazwa": "title", "Kandydat": "relation", "Oceniający": "people", "Ocena": "number",
-        "Komentarz": "rich_text", "Ostatni zapis": "date", "Klucz": "rich_text",
-    }
+    oceny_ii = schema(fake, "Oceny II etap")
+    for grades in (oceny, oceny_ii):
+        assert {name: p["type"] for name, p in grades.items()} == {
+            "Nazwa": "title", "Kandydat": "relation", "Oceniający": "people", "Ocena": "number",
+            "Komentarz": "rich_text", "Ostatni zapis": "date", "Klucz": "rich_text",
+        }
+        assert grades["Kandydat"]["relation"]["database_id"] == database_id(fake, "Kandydaci")
     assert oceny["Kandydat"]["relation"]["type"] == "dual_property"
+    assert oceny_ii["Kandydat"]["relation"]["type"] == "single_property"
     assert kandydaci["Średnia"]["rollup"]["function"] == "average"
     assert kandydaci["Liczba ocen"]["rollup"]["function"] == "not_empty"
     assert kandydaci["Liczba ocen"]["rollup"]["relation_property_name"] == "Oceny"
     out = capsys.readouterr().out
     assert "created database Kandydaci" in out and "db-1" in out
+    assert f"Oceny II etap: {database_id(fake, 'Oceny II etap')}" in out
 
 
 def test_first_run_creates_board_views(monkeypatch):
@@ -188,11 +200,15 @@ def test_existing_database_only_gets_missing_properties(monkeypatch):
     assert kandydaci["Rok studiów"]["type"] == "rich_text"
 
 
-def test_missing_zarzad_checkbox_exits(monkeypatch, capsys):
-    fake = FakeNotion(members={k: v for k, v in MEMBERS.items() if k != "Zarząd"})
+@pytest.mark.parametrize("zapisy, message", [
+    (None, "Connections"),
+    ({k: v for k, v in ZAPISY.items() if k != "Wybór grupy"}, "'Wybór grupy' must be a select"),
+])
+def test_unusable_interview_signups_exit(monkeypatch, capsys, zapisy, message):
+    fake = FakeNotion(zapisy=zapisy)
     assert run_main(monkeypatch, fake) == 1
     assert fake.writes == []
-    assert "Zarząd" in capsys.readouterr().out
+    assert message in capsys.readouterr().out
 
 
 def test_unreadable_board_page_exits(monkeypatch, capsys):

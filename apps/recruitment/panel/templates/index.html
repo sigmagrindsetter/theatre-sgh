@@ -1,24 +1,38 @@
 {% extends "panel.html" %}
 {% block title %}Kandydaci{% endblock %}
 {% block content %}
-<h1>Kandydaci</h1>
-{% if rows %}
+<h1>Kandydaci – II etap</h1>
+{% if signups_failed %}
+<p class="muted">Nie udało się odczytać zapisów na rozmowy, więc lista nie jest podzielona na grupy. Spróbuj ponownie za chwilę.</p>
+{% endif %}
+{% for group, rows in sections %}
+{% if group %}<h2>{{ group }} <span class="muted">({{ rows | length }})</span></h2>{% endif %}
 <table class="candidates">
-  <thead><tr><th></th><th>Imię i nazwisko</th><th>Obszary</th><th>Rok studiów</th><th>Twoja ocena</th></tr></thead>
+  <thead><tr><th></th><th>Imię i nazwisko</th><th>Obszary</th><th>Rok studiów</th><th>Średnia</th><th>Twoja ocena</th></tr></thead>
   <tbody>
-  {% for c, grade in rows %}
+  {% for c, grade, average in rows %}
     <tr>
       <td>{% if c.thumbnail %}<a href="/k/{{ c.id }}"><img class="thumb" src="{{ c.thumbnail }}" alt="" loading="lazy"></a>{% endif %}</td>
       <td><a href="/k/{{ c.id }}">{{ c.name }}</a></td>
       <td>{{ c.obszary | join(", ") }}</td>
       <td>{{ c.rok }}</td>
+      <td>{% if average %}{{ "%.2f" | format(average.average) | replace(".", ",") }} <span class="muted">({{ average.count }})</span>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td>{% if grade and grade.ocena is not none %}{{ grade.ocena }}/10{% else %}<span class="muted">brak oceny</span>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-<p>Nie ma jeszcze kandydatów.</p>
+<p>Nie ma jeszcze kandydatów zaproszonych na II etap.</p>
+{% endfor %}
+
+{% if unmatched %}
+<h2>Zapisy bez kandydata</h2>
+<p class="muted">Tych zapisów na rozmowę nie udało się dopasować do żadnego zaproszonego kandydata (imię i nazwisko
+  inne niż w zgłoszeniu?).</p>
+<ul>
+  {% for s in unmatched %}<li>{{ s.name or "(bez imienia)" }} – {{ s.group or "bez grupy" }}</li>{% endfor %}
+</ul>
 {% endif %}
 
 <h2>Postęp oceniania</h2>

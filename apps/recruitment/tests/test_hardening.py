@@ -20,14 +20,14 @@ from notion_client.errors import APIErrorCode, APIResponseError
 from uvicorn.logging import AccessFormatter
 
 import config
-from fake_notion import FakeNotion, member, title
+from fake_notion import FakeNotion, checkbox, member, title
 from panel import auth, ingest, main, notion_dbs, ratelimit, store
 from panel.main import app
 from shared.auth import NotionAuth
 
-KANDYDACI, OCENY = "kandydaci-db", "oceny-db"
+KANDYDACI, OCENY = "kandydaci-db", "oceny-ii-db"
 ALICE = "a0000000-0000-4000-8000-000000000001"  # reviewer
-BOB = "b0000000-0000-4000-8000-000000000002"    # board member
+BOB = "b0000000-0000-4000-8000-000000000002"    # second reviewer
 X = "11111111-1111-4111-8111-111111111111"      # YouTube candidate
 Y = "22222222-2222-4222-8222-222222222222"
 UNKNOWN = "99999999-9999-4999-8999-999999999999"
@@ -44,19 +44,19 @@ TEMPLATES = Path(__file__).resolve().parent.parent / "panel" / "templates"
 def notion(monkeypatch):
     fake = FakeNotion()
     monkeypatch.setattr(NotionAuth, "_client", fake)
-    monkeypatch.setattr(notion_dbs, "_ids", {config.KANDYDACI_TITLE: KANDYDACI, config.OCENY_TITLE: OCENY})
+    monkeypatch.setattr(notion_dbs, "_ids", {config.KANDYDACI_TITLE: KANDYDACI, config.OCENY_II_TITLE: OCENY,
+                                             config.OCENY_TITLE: "oceny-db"})
     monkeypatch.setattr(auth, "_members", {"at": None, "by_person": {}})
     monkeypatch.setattr(store, "_candidates", {"at": None, "list": []})
-    monkeypatch.setattr(store, "_graded", {"at": None, "by_user": {}})
     monkeypatch.setattr(store, "_page_ids", {})
     monkeypatch.setattr(store, "_locks", {})
     fake.add(config.MEMBERS_DATABASE_ID, member(ALICE, "Alicja"))
-    fake.add(config.MEMBERS_DATABASE_ID, member(BOB, "Bartek", board=True))
+    fake.add(config.MEMBERS_DATABASE_ID, member(BOB, "Bartek"))
     czas = {"type": "date", "date": {"start": "2026-09-02T09:30:00.000+02:00"}}
-    fake.add(KANDYDACI, {"Imię i nazwisko": title("Adam Pierwszy"), "Czas": czas,
+    fake.add(KANDYDACI, {"Imię i nazwisko": title("Adam Pierwszy"), "Czas": czas, "II etap": checkbox(True),
                          "Filmik znormalizowany": {"type": "url", "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa"},
                          "Status filmiku": {"type": "select", "select": {"name": "youtube"}}}, X)
-    fake.add(KANDYDACI, {"Imię i nazwisko": title("Zofia Druga"), "Czas": czas}, Y)
+    fake.add(KANDYDACI, {"Imię i nazwisko": title("Zofia Druga"), "Czas": czas, "II etap": checkbox(True)}, Y)
     return fake
 
 
@@ -105,10 +105,8 @@ def test_templates_have_no_inline_script_style_or_handler(template):
     assert not re.search(r"<script(?![^>]*\ssrc=)|<style|\sstyle=|\son[a-z]+\s*=|javascript:", source, re.I)
 
 
-def test_rendered_pages_load_only_what_the_csp_allows(alice, notion, monkeypatch):
-    monkeypatch.setattr(ingest, "skipped_submissions", lambda: [])
+def test_rendered_pages_load_only_what_the_csp_allows(alice, notion):
     pages = [alice.get(path).text for path in ("/", f"/k/{X}", "/nope", "/privacy", "/terms", "/auth/logged-out")]
-    pages.append(as_user(BOB).get("/zarzad").text)
     html = "\n".join(pages)
     assert 'src="https://www.youtube-nocookie.com/embed/aaaaaaaaaaa"' in html
     assert 'src="https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg"' in html

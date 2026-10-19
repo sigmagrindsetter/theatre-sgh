@@ -25,3 +25,16 @@ def rate_limit(monkeypatch):
     ticks = itertools.count(step=2)
     monkeypatch.setattr(ratelimit, "clock", lambda: next(ticks))
     monkeypatch.setattr(ratelimit, "_events", defaultdict(OrderedDict))
+
+
+@pytest.fixture(autouse=True)
+def fresh_store(monkeypatch):
+    """Empty panel caches, so no test sees Notion rows cached by another."""
+    from panel import store
+    monkeypatch.setattr(store, "_candidates", {"at": None, "list": []})
+    monkeypatch.setattr(store, "_grades_ii", {"at": None, "by_key": {}})
+    monkeypatch.setattr(store, "_saved", {})
+    monkeypatch.setattr(store, "_stage1", {"at": None, "by_candidate": {}})
+    monkeypatch.setattr(store, "_signups", {"at": None, "list": []})
+    monkeypatch.setattr(store, "_page_ids", {})
+    monkeypatch.setattr(store, "_locks", {})

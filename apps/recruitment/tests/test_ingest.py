@@ -219,11 +219,6 @@ def test_logs_contain_no_personal_data(notion, monkeypatch, capsys):
     assert "youtu" not in out and "drive" not in out
 
 
-def test_skipped_submissions(notion):
-    assert ingest.skipped_submissions() == [{"row": 7, "czas": "2026-09-05 14:00:00", "name": "Celina Bezlinku",
-                                             "email": "celina@example.com", "filmik": "brak"}]
-
-
 client = TestClient(app)
 
 

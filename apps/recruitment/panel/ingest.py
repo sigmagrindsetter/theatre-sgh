@@ -74,12 +74,6 @@ def plan(rows):
     return accepted, skipped
 
 
-def skipped_submissions():
-    """Rows since the cutoff whose e-mail has no row with a valid link; computed on demand, never stored."""
-    _, skipped = plan(submissions())
-    return [{key: row[key] for key in ("row", "czas", "name", "email", "filmik")} for row in skipped]
-
-
 def existing_emails(client, kandydaci):
     emails, cursor = set(), None
     while True:

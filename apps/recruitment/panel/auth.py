@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from urllib.parse import urlencode, urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
@@ -37,7 +37,6 @@ class User:
     id: str
     name: str
     email: str
-    board: bool
 
 
 class AuthError(Exception):
@@ -50,7 +49,7 @@ class AuthError(Exception):
 
 
 def members(refresh=False):
-    """Person id -> {name, active, board} from Lista członków (read-only), cached for 5 minutes."""
+    """Person id -> {name, active} from Lista członków (read-only), cached for 5 minutes."""
     with _members_lock:
         now = time.monotonic()
         if refresh or _members["at"] is None or now - _members["at"] >= MEMBERS_TTL:
@@ -72,13 +71,11 @@ def _load_members():
             props = page["properties"]
             name = "".join(t["plain_text"] for t in props.get("Imię i Nazwisko", {}).get("title", [])).strip()
             active = props.get("Aktywny członek", {}).get("checkbox") is True
-            board = active and props.get("Zarząd", {}).get("checkbox") is True
             for person in props.get("Person", {}).get("people", []):
-                entry = by_person.setdefault(person["id"], {"name": "", "active": False, "board": False})
+                entry = by_person.setdefault(person["id"], {"name": "", "active": False})
                 if active or not entry["name"]:
                     entry["name"] = name or person.get("name") or entry["name"]
                 entry["active"] = entry["active"] or active
-                entry["board"] = entry["board"] or board
         if not response.get("has_more"):
             return by_person
         cursor = response["next_cursor"]
@@ -108,7 +105,7 @@ def _active_user(session):
     member = members().get(session["uid"])
     if not (member and member["active"]):
         return None
-    return User(session["uid"], session.get("name") or "", session.get("email") or "", member["board"])
+    return User(session["uid"], session.get("name") or "", session.get("email") or "")
 
 
 def current_user(request: Request):
@@ -124,12 +121,6 @@ def require_reviewer(request: Request) -> User:
     user = _active_user(session)
     if user is None:
         raise AuthError(403, NOT_MEMBER)
-    return user
-
-
-def require_board(user: User = Depends(require_reviewer)) -> User:
-    if not user.board:
-        raise AuthError(403, "Ta strona jest dostępna tylko dla Zarządu.")
     return user
 
 
