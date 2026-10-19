@@ -134,6 +134,15 @@ def test_drive_candidate_gets_a_link_not_a_player(alice):
     assert 'href="https://drive.google.com/drive/folders/abc"' in html
 
 
+def test_drive_file_gets_the_drive_player_and_thumbnail(notion, alice):
+    page = notion.add(KANDYDACI, candidate_props("Daria Plikowa", "2026-09-08T18:00:00.000+02:00",
+                                                 "https://drive.google.com/file/d/1FileIdAbcXyz/view", "drive"))
+    html = alice.get(f"/k/{page['id']}").text
+    assert 'src="https://drive.google.com/file/d/1FileIdAbcXyz/preview"' in html
+    assert 'href="https://drive.google.com/file/d/1FileIdAbcXyz/view"' in html
+    assert 'src="https://drive.google.com/thumbnail?id=1FileIdAbcXyz&amp;sz=w480"' in alice.get("/").text
+
+
 def test_privacy_reads_never_show_another_reviewers_grade(alice):
     for path in ("/", f"/k/{X}", f"/k/{X}?uid={BOB}", f"/k/{X}?user={BOB}"):
         html = alice.get(path).text

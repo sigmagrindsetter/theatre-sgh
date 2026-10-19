@@ -17,6 +17,7 @@ from shared.auth import NotionAuth
 WARSAW = ZoneInfo("Europe/Warsaw")
 CANDIDATES_TTL = 60
 YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+DRIVE_FILE = re.compile(r"https://drive\.google\.com/file/d/([A-Za-z0-9_-]{10,})(?:[/?]|$)")
 # a remembered Oceny page that was deleted or archived; other errors must not lead to a duplicate create
 GONE = (APIErrorCode.ObjectNotFound, APIErrorCode.ValidationError)
 
@@ -68,6 +69,12 @@ def _youtube_id(url):
     return video if YOUTUBE_ID.fullmatch(video) else None
 
 
+def _drive_id(url):
+    """File id of a Drive file link; folder links have no player."""
+    match = DRIVE_FILE.match(url)
+    return match.group(1) if match else None
+
+
 def _http_url(url):
     return url if urlsplit(url).scheme in ("http", "https") else None
 
@@ -77,6 +84,7 @@ def _candidate(page):
     normalized = (p.get("Filmik znormalizowany") or {}).get("url") or ""
     status = _select(p.get("Status filmiku"))
     youtube_id = _youtube_id(normalized) if status == "youtube" else None
+    drive_id = _drive_id(normalized) if status == "drive" else None
     czas = _date(p.get("Czas"))
     return {
         "id": page["id"],
@@ -91,8 +99,10 @@ def _candidate(page):
         "normalized": normalized,
         "status": status,
         "youtube_id": youtube_id,
+        "drive_id": drive_id,
         # derived from the id: Notion file URLs (Zdjęcie) expire after an hour
-        "thumbnail": f"https://i.ytimg.com/vi/{youtube_id}/hqdefault.jpg" if youtube_id else None,
+        "thumbnail": (f"https://i.ytimg.com/vi/{youtube_id}/hqdefault.jpg" if youtube_id
+                      else f"https://drive.google.com/thumbnail?id={drive_id}&sz=w480" if drive_id else None),
         "link": _http_url(normalized),
     }
 

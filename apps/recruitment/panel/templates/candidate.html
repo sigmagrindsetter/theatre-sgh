@@ -9,7 +9,13 @@
           allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen
           referrerpolicy="strict-origin-when-cross-origin"></iframe>
 </div>
-{% elif c.link %}
+{% elif c.drive_id %}
+<div class="player">
+  <iframe src="https://drive.google.com/file/d/{{ c.drive_id }}/preview" title="Filmik rekrutacyjny"
+          allow="autoplay; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+</div>
+{% endif %}
+{% if c.link and not c.youtube_id %}
 <p><a href="{{ c.link }}" target="_blank" rel="noopener noreferrer">Otwórz filmik na Dysku Google</a></p>
 {% endif %}
 
