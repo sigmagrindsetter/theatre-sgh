@@ -10,14 +10,14 @@ from itsdangerous import URLSafeTimedSerializer
 import config
 from notion_client.errors import APIErrorCode, APIResponseError
 
-from fake_notion import FakeNotion, error, member, people, text, title
+from fake_notion import FakeNotion, checkbox, error, member, people, text, title
 from panel import auth, notion_dbs, store
 from panel.main import app
 from shared.auth import NotionAuth
 
-KANDYDACI, OCENY = "kandydaci-db", "oceny-db"
+KANDYDACI, OCENY, STAGE1 = "kandydaci-db", "oceny-ii-db", "oceny-db"
 ALICE = "a0000000-0000-4000-8000-000000000001"  # reviewer
-BOB = "b0000000-0000-4000-8000-000000000002"    # board member, also grades
+BOB = "b0000000-0000-4000-8000-000000000002"    # another reviewer
 CAROL = "c0000000-0000-4000-8000-000000000003"  # active, has not graded
 EVE = "e0000000-0000-4000-8000-000000000005"    # inactive
 X = "11111111-1111-4111-8111-111111111111"
@@ -28,7 +28,7 @@ BOB_X_ROW = "bbbb0000-0000-4000-8000-00000000000b"
 SAME_ORIGIN = {"Sec-Fetch-Site": "same-origin"}
 
 
-def candidate_props(name, czas, video, status, rok="I SL", obszary=("Aktorstwo", "Scenografia")):
+def candidate_props(name, czas, video, status, rok="I SL", obszary=("Aktorstwo", "Scenografia"), invited=True):
     normalized = f"https://www.youtube.com/watch?v={video}" if status == "youtube" else video
     return {
         "Imię i nazwisko": title(name), "Email": {"type": "email", "email": f"{name[:3].lower()}@example.com"},
@@ -38,6 +38,7 @@ def candidate_props(name, czas, video, status, rok="I SL", obszary=("Aktorstwo",
         "Filmik": {"type": "url", "url": f"https://youtu.be/{video}?si=x" if status == "youtube" else video},
         "Filmik znormalizowany": {"type": "url", "url": normalized},
         "Status filmiku": {"type": "select", "select": {"name": status}},
+        "II etap": checkbox(invited),
     }
 
 
@@ -54,15 +55,12 @@ def grade_props(cid, uid, ocena, komentarz, reviewers=None):
 def notion(monkeypatch):
     fake = FakeNotion()
     monkeypatch.setattr(NotionAuth, "_client", fake)
-    monkeypatch.setattr(notion_dbs, "_ids", {config.KANDYDACI_TITLE: KANDYDACI, config.OCENY_TITLE: OCENY})
+    monkeypatch.setattr(notion_dbs, "_ids", {config.KANDYDACI_TITLE: KANDYDACI, config.OCENY_II_TITLE: OCENY,
+                                             config.OCENY_TITLE: STAGE1})
     monkeypatch.setattr(auth, "_members", {"at": None, "by_person": {}})
-    monkeypatch.setattr(store, "_candidates", {"at": None, "list": []})
-    monkeypatch.setattr(store, "_graded", {"at": None, "by_user": {}})
-    monkeypatch.setattr(store, "_page_ids", {})
-    monkeypatch.setattr(store, "_locks", {})
-    for uid, name, active, board in [(ALICE, "Alicja", True, False), (BOB, "Bartek", True, True),
-                                     (CAROL, "Celina", True, False), (EVE, "Ewa", False, False)]:
-        fake.add(config.MEMBERS_DATABASE_ID, member(uid, name, active=active, board=board))
+    for uid, name, active in [(ALICE, "Alicja", True), (BOB, "Bartek", True), (CAROL, "Celina", True),
+                              (EVE, "Ewa", False)]:
+        fake.add(config.MEMBERS_DATABASE_ID, member(uid, name, active=active))
     fake.add(KANDYDACI, candidate_props("Zofia Druga", "2026-09-05T12:00:00.000+02:00", "bbbbbbbbbbb", "youtube"), Y)
     fake.add(KANDYDACI, candidate_props("Adam Pierwszy", "2026-09-02T09:30:00.000+02:00", "aaaaaaaaaaa", "youtube"), X)
     fake.add(KANDYDACI, candidate_props("Dawid Dyskowy", "2026-09-07T18:00:00.000+02:00",
@@ -109,8 +107,9 @@ def test_list_shows_candidates_sorted_with_own_status_and_progress(alice):
     assert 'action="/auth/logout"' in html
 
 
-def test_board_member_sees_board_link(notion):
-    assert 'href="/zarzad"' in as_user(BOB, "Bartek N").get("/").text
+@pytest.mark.parametrize("path", ["/zarzad", "/zarzad/export.csv"])
+def test_board_pages_are_gone(alice, path):
+    assert alice.get(path).status_code == 404
 
 
 def test_card_restores_own_grade(alice):
@@ -143,14 +142,15 @@ def test_drive_file_gets_the_drive_player_and_thumbnail(notion, alice):
     assert 'src="https://drive.google.com/thumbnail?id=1FileIdAbcXyz&amp;sz=w480"' in alice.get("/").text
 
 
-def test_privacy_reads_never_show_another_reviewers_grade(alice):
-    for path in ("/", f"/k/{X}", f"/k/{X}?uid={BOB}", f"/k/{X}?user={BOB}"):
+def test_privacy_another_reviewers_grade_shows_only_in_the_average_and_comment_without_author(alice):
+    assert "SEKRET-BARTKA" not in alice.get("/").text
+    for path in (f"/k/{X}", f"/k/{X}?uid={BOB}", f"/k/{X}?user={BOB}"):
         html = alice.get(path).text
-        assert "SEKRET-BARTKA" not in html
+        assert "<li>SEKRET-BARTKA</li>" in html
+        assert "Bartek" not in html and BOB not in html and "10:05" not in html.split('id="others"')[1]
         assert "9/10" not in html
         assert 'data-ocena="9" aria-pressed="true"' not in html
-        if path != "/":
-            assert f'<section id="grade" data-id="{X}" data-ocena="3">' in html
+        assert f'<section id="grade" data-id="{X}" data-ocena="3">' in html
 
 
 def test_privacy_put_only_touches_own_row(alice, notion):
@@ -188,8 +188,9 @@ def test_privacy_no_request_shape_reaches_another_reviewers_row(alice, notion, m
 
 def test_privacy_rows_are_rechecked_by_klucz(alice, notion):
     notion.add(OCENY, grade_props(Y, BOB, 8, "SEKRET-2", reviewers=[BOB, ALICE]))
-    assert "SEKRET-2" not in alice.get(f"/k/{Y}").text
-    assert store.my_grades(auth.User(ALICE, "Alicja", "", False)).keys() == {X}
+    html = alice.get(f"/k/{Y}").text
+    assert ">SEKRET-2</textarea>" not in html and 'data-ocena="8" aria-pressed="true"' not in html
+    assert store.my_grades(auth.User(ALICE, "Alicja", "")).keys() == {X}
 
 
 def test_progress_returns_counts_only(notion):
@@ -208,7 +209,7 @@ def test_progress_scans_oceny_once_a_minute_and_counts_own_saves_at_once(alice, 
     assert alicja() == 2  # the new row still lags in queries
     assert alice.put(f"/api/oceny/{X}", json={"ocena": None, "komentarz": ""}, headers=SAME_ORIGIN).status_code == 200
     assert alicja() == 1
-    assert [c for c in notion.calls_of("query")[scans:] if c[1] == OCENY and "Ocena" in str(c)] == []
+    assert [c for c in notion.calls_of("query")[scans:] if c[1] == OCENY and c[2] is None] == []
 
 
 def test_first_save_creates_and_later_saves_update_despite_query_lag(alice, notion):
@@ -250,7 +251,7 @@ def test_lost_page_id_falls_back_to_query(alice, notion):
 
 
 def test_archived_row_is_replaced_but_transient_errors_never_duplicate(alice, notion, monkeypatch):
-    user = auth.User(ALICE, "Alicja", "", False)
+    user = auth.User(ALICE, "Alicja", "")
     store.save_grade(user, Y, 7, "")
     assert len(notion.calls_of("create")) == 1
     notion.rows[OCENY][-1]["archived"] = True
@@ -277,7 +278,7 @@ def test_concurrent_saves_create_one_row(notion, monkeypatch):
         return create(**kwargs)
 
     monkeypatch.setattr(notion.pages, "create", slow_create)
-    user = auth.User(ALICE, "Alicja", "", False)
+    user = auth.User(ALICE, "Alicja", "")
     threads = [threading.Thread(target=store.save_grade, args=(user, Y, n, "")) for n in (4, 5, 6)]
     for t in threads:
         t.start()

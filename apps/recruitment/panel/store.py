@@ -1,7 +1,10 @@
-"""Every Notion read of the panel and the Oceny upsert. Grades are user-scoped, except board-only all_grades."""
+"""Every Notion read of the panel and the Oceny II etap upsert (REVIEW_PANEL_SPEC.md §11).
+A grade or comment leaves this module with its author only to that author; to others only as an average
+or as a comment without author or time."""
 import re
 import threading
 import time
+import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from urllib.parse import parse_qs, urlsplit
@@ -16,6 +19,8 @@ from shared.auth import NotionAuth
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 CANDIDATES_TTL = 60
+STAGE1_TTL = 10 * 60  # stage I is closed, its Oceny no longer change
+INVITED = "II etap"
 YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 DRIVE_FILE = re.compile(r"https://drive\.google\.com/file/d/([A-Za-z0-9_-]{10,})(?:[/?]|$)")
 # a remembered Oceny page that was deleted or archived; other errors must not lead to a duplicate create
@@ -23,8 +28,13 @@ GONE = (APIErrorCode.ObjectNotFound, APIErrorCode.ValidationError)
 
 _candidates = {"at": None, "list": []}
 _candidates_lock = threading.Lock()
-_graded = {"at": None, "by_user": {}}
-_graded_lock = threading.Lock()
+_grades_ii = {"at": None, "by_key": {}}
+_saved = {}  # Klucz -> row saved by this process: a new row lags in queries for a while
+_grades_ii_lock = threading.Lock()
+_stage1 = {"at": None, "by_candidate": {}}
+_stage1_lock = threading.Lock()
+_signups = {"at": None, "list": []}
+_signups_lock = threading.Lock()
 # Klucz -> Oceny page id: right after a create the row is missing from queries for a while
 _page_ids = {}
 _locks = {}
@@ -108,11 +118,12 @@ def _candidate(page):
 
 
 def candidates():
-    """Kandydaci sorted by Czas, cached for 60 s."""
+    """Kandydaci invited to stage II (II etap ticked) sorted by Czas, cached for 60 s."""
     with _candidates_lock:
         now = time.monotonic()
         if _candidates["at"] is None or now - _candidates["at"] >= CANDIDATES_TTL:
-            pages = _query_all(database_id(config.KANDYDACI_TITLE))
+            pages = [p for p in _query_all(database_id(config.KANDYDACI_TITLE))
+                     if (p["properties"].get(INVITED) or {}).get("checkbox") is True]
             _candidates["list"] = sorted((_candidate(p) for p in pages), key=lambda c: (c["czas"], c["name"]))
             _candidates["at"] = now
         return _candidates["list"]
@@ -154,7 +165,7 @@ def _own_page(key):
                 raise
         _page_ids.pop(key, None)
     by_key = {"property": "Klucz", "rich_text": {"equals": key}}
-    for page in _query_all(database_id(config.OCENY_TITLE), filter=by_key):
+    for page in _query_all(database_id(config.OCENY_II_TITLE), filter=by_key):
         if _grade(page, key):
             _page_ids[key] = page["id"]
             return page
@@ -171,7 +182,7 @@ def my_grades(user):
     """{candidate id: grade} of the session user."""
     grades = {}
     mine = {"property": "Oceniający", "people": {"contains": user.id}}
-    for page in _query_all(database_id(config.OCENY_TITLE), filter=mine):
+    for page in _query_all(database_id(config.OCENY_II_TITLE), filter=mine):
         cid = _text(page["properties"].get("Klucz")).split("|")[0]
         grade = _grade(page, _key(cid, user))
         if grade:
@@ -226,65 +237,136 @@ def save_grade(user, cid, ocena, komentarz):
         if page:
             client.pages.update(page_id=page["id"], properties=properties)
         else:
-            page = client.pages.create(parent={"database_id": database_id(config.OCENY_TITLE)}, properties=properties)
+            page = client.pages.create(parent={"database_id": database_id(config.OCENY_II_TITLE)}, properties=properties)
             _page_ids[key] = page["id"]
-    with _graded_lock:
-        mine = _graded["by_user"].setdefault(user.id, set())
-        if ocena is None:
-            mine.discard(found["id"])
-        else:
-            mine.add(found["id"])
+    row = {"cid": found["id"], "uid": user.id, "ocena": ocena, "komentarz": komentarz, "saved_at": saved_at}
+    with _grades_ii_lock:
+        _saved[key] = row
+        _grades_ii["by_key"][key] = row
     return saved_at
 
 
-def _graded_by_user():
-    """Reviewer id -> ids of the candidates they graded, cached for 60 s; save_grade keeps it current."""
-    with _graded_lock:
+
+def _live_rows(title):
+    """Klucz -> {cid, uid, ocena, komentarz, saved_at} of the live rows of a grades database, the newest per Klucz:
+    a create resent after a Notion 5xx can leave a twin row"""
+    rows = {}
+    for page in _query_all(database_id(title)):
+        key = _text(page["properties"].get("Klucz"))
+        cid, _, uid = key.partition("|")
+        grade = _grade(page, key)
+        if not (cid and uid and grade):
+            continue
+        if key not in rows or grade["saved_at"] > rows[key]["saved_at"]:
+            rows[key] = {"cid": cid, "uid": uid, "ocena": grade["ocena"], "komentarz": grade["komentarz"],
+                         "saved_at": grade["saved_at"]}
+    return rows
+
+
+def _rows_ii():
+    """Every reviewer's live Oceny II etap rows, cached for 60 s; this process's own saves count at once."""
+    with _grades_ii_lock:
         now = time.monotonic()
-        if _graded["at"] is None or now - _graded["at"] >= CANDIDATES_TTL:
-            graded = defaultdict(set)
-            has_grade = {"property": "Ocena", "number": {"is_not_empty": True}}
-            for page in _query_all(database_id(config.OCENY_TITLE), filter=has_grade):
-                cid, _, uid = _text(page["properties"].get("Klucz")).partition("|")
-                graded[uid].add(cid)
-            _graded["by_user"], _graded["at"] = dict(graded), now
-        return _graded["by_user"]
+        if _grades_ii["at"] is None or now - _grades_ii["at"] >= CANDIDATES_TTL:
+            rows = _live_rows(config.OCENY_II_TITLE)
+            for key, row in _saved.items():
+                if key not in rows or row["saved_at"] >= rows[key]["saved_at"]:
+                    rows[key] = row
+            _grades_ii["by_key"], _grades_ii["at"] = rows, now
+        return list(_grades_ii["by_key"].values())
 
 
 def progress():
     """Graded/total per active member. Counts only: no grade or comment leaves this function."""
     ids = {c["id"] for c in candidates()}
-    graded = _graded_by_user()
-    rows = [{"name": m["name"], "graded": len(graded.get(pid, set()) & ids), "total": len(ids)}
+    graded = defaultdict(set)
+    for row in _rows_ii():
+        if row["ocena"] is not None:
+            graded[row["uid"]].add(row["cid"])
+    rows = [{"name": m["name"], "graded": len(graded[pid] & ids), "total": len(ids)}
             for pid, m in auth.members().items() if m["active"]]
     return sorted(rows, key=lambda r: r["name"].lower())
 
 
-def all_grades():
-    """Every reviewer's live Oceny rows of current candidates. Board only: called solely by the /zarzad routes.
-    One row per candidate and reviewer, the newest: a create resent after a Notion 5xx can leave a twin row"""
-    grades = {}
-    for page in _query_all(database_id(config.OCENY_TITLE)):
-        if page.get("archived") or page.get("in_trash"):
-            continue
-        p = page["properties"]
-        key_cid, _, key_uid = _text(p.get("Klucz")).partition("|")
-        relation = (p.get("Kandydat") or {}).get("relation") or []
-        found = candidate(relation[0]["id"] if relation else key_cid)
-        if found is None:
-            continue
-        person = ((p.get("Oceniający") or {}).get("people") or [{}])[0]
-        saved_at = _date(p.get("Ostatni zapis"))
-        row = {
-            "candidate_id": found["id"],
-            "reviewer_id": person.get("id") or key_uid,
-            "reviewer_name": person.get("name") or "",
-            "ocena": (p.get("Ocena") or {}).get("number"),
-            "komentarz": _text(p.get("Komentarz")),
-            "saved_at": saved_at,
-            "saved_local": _local(saved_at, "%Y-%m-%d %H:%M") if saved_at else "",
-        }
-        pair = (row["candidate_id"], row["reviewer_id"])
-        if pair not in grades or saved_at > grades[pair]["saved_at"]:
-            grades[pair] = row
-    return list(grades.values())
+def averages():
+    """Candidate id -> {average, count} of every reviewer's stage II grades."""
+    values = defaultdict(list)
+    for row in _rows_ii():
+        if row["ocena"] is not None:
+            values[row["cid"]].append(row["ocena"])
+    return {cid: {"average": sum(v) / len(v), "count": len(v)} for cid, v in values.items()}
+
+
+def _fold(text):
+    """Text without case or Polish letters, for alphabetical order and name matching."""
+    text = unicodedata.normalize("NFKD", text.replace("ł", "l").replace("Ł", "L"))
+    return "".join(ch for ch in text if not unicodedata.combining(ch)).casefold()
+
+
+def _anonymous(comments):
+    """Non-empty comments sorted by text, so their order tells neither the author nor the save time."""
+    return sorted((c.strip() for c in comments if c.strip()), key=_fold)
+
+
+def others_comments(user, cid):
+    """Stage II comments on the candidate by every reviewer except the session user, without author or time."""
+    return _anonymous(row["komentarz"] for row in _rows_ii() if row["cid"] == cid and row["uid"] != user.id)
+
+
+def stage1_comments(cid):
+    """Stage I comments on the candidate, without author, time or grade; cached for 10 minutes."""
+    with _stage1_lock:
+        now = time.monotonic()
+        if _stage1["at"] is None or now - _stage1["at"] >= STAGE1_TTL:
+            by_candidate = defaultdict(list)
+            for row in _live_rows(config.OCENY_TITLE).values():
+                by_candidate[row["cid"]].append(row["komentarz"])
+            _stage1["by_candidate"] = {c: _anonymous(comments) for c, comments in by_candidate.items()}
+            _stage1["at"] = now
+        return _stage1["by_candidate"].get(cid, [])
+
+
+def _name_key(name):
+    """A name without case, Polish letters or word order: sign-ups are typed by hand."""
+    return " ".join(sorted(_fold(name).split()))
+
+
+def _signup_list():
+    """Interview sign-ups [{name, emails, group, at}], cached for 60 s."""
+    with _signups_lock:
+        now = time.monotonic()
+        if _signups["at"] is None or now - _signups["at"] >= CANDIDATES_TTL:
+            signups = []
+            for page in _query_all(config.ZAPISY_DATABASE_ID):
+                p = page["properties"]
+                people = (p.get("Auto-osoba") or {}).get("people") or []
+                signups.append({
+                    "name": _text(p.get("Imię i nazwisko")).strip(),
+                    "emails": {((x.get("person") or {}).get("email") or "").strip().lower() for x in people} - {""},
+                    "group": _select(p.get("Wybór grupy")),
+                    "at": _date(p.get("Auto-czas")) or page.get("created_time") or "",
+                })
+            _signups["list"], _signups["at"] = signups, now
+        return _signups["list"]
+
+
+def groups():
+    """(candidate id -> chosen group, sign-ups matching no invited candidate). A sign-up matches by name, else by the
+    e-mail of its Notion account; of a candidate's sign-ups the newest with a group wins"""
+    by_name, by_email = {}, {}
+    for c in candidates():
+        by_name.setdefault(_name_key(c["name"]), c["id"])
+        by_email.setdefault(c["email"].strip().lower(), c["id"])
+    by_name.pop("", None)
+    by_email.pop("", None)
+    chosen, unmatched = {}, []
+    for signup in sorted(_signup_list(), key=lambda s: s["at"]):
+        if not (signup["name"] or signup["group"]):
+            continue  # a row added and left empty
+        cid = by_name.get(_name_key(signup["name"])) or next(
+            (by_email[e] for e in sorted(signup["emails"]) if e in by_email), None)
+        if cid is None:
+            unmatched.append(signup)
+        elif signup["group"] or cid not in chosen:
+            chosen[cid] = signup["group"]
+    return {cid: group for cid, group in chosen.items() if group}, unmatched

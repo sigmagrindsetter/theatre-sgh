@@ -17,7 +17,7 @@ from panel.main import app
 from shared.auth import NotionAuth
 
 ALICE = "a0000000-0000-4000-8000-000000000001"   # active reviewer
-BOB = "b0000000-0000-4000-8000-000000000002"     # active board member
+BOB = "b0000000-0000-4000-8000-000000000002"     # active member
 EVE = "e0000000-0000-4000-8000-000000000005"     # inactive member
 LATE = "c0000000-0000-4000-8000-000000000003"    # added to Lista członków after the cache was filled
 MALLORY = "f0000000-0000-4000-8000-000000000006"  # not in Lista członków
@@ -32,7 +32,7 @@ probe.add_exception_handler(auth.AuthError, auth.auth_error_handler)
 @probe.get("/whoami")
 @probe.get("/api/whoami")
 def whoami(user: auth.User = Depends(auth.require_reviewer)):
-    return {"id": user.id, "name": user.name, "email": user.email, "board": user.board}
+    return {"id": user.id, "name": user.name, "email": user.email}
 
 
 @probe.get("/optional")
@@ -41,19 +41,14 @@ def optional(request: Request):
     return {"id": user.id if user else None}
 
 
-@probe.get("/board")
-def board(user: auth.User = Depends(auth.require_board)):
-    return {"id": user.id}
-
-
 @pytest.fixture
 def notion(monkeypatch):
     fake = FakeNotion()
     monkeypatch.setattr(NotionAuth, "_client", fake)
     monkeypatch.setattr(auth, "_members", {"at": None, "by_person": {}})
     fake.add(config.MEMBERS_DATABASE_ID, member(ALICE, "Alicja Recenzentka"))
-    fake.add(config.MEMBERS_DATABASE_ID, member(BOB, "Bob Zarządca", board=True))
-    fake.add(config.MEMBERS_DATABASE_ID, member(EVE, "Ewa Była", active=False, board=True))
+    fake.add(config.MEMBERS_DATABASE_ID, member(BOB, "Bob Członek"))
+    fake.add(config.MEMBERS_DATABASE_ID, member(EVE, "Ewa Była", active=False))
     fake.add(config.MEMBERS_DATABASE_ID, member(None, "Bez konta"))
     return fake
 
@@ -140,9 +135,8 @@ def test_active_member_gets_session_cookie(client, token_requests):
     assert "notion-access-token" not in cookie
 
     me = client.get("/whoami").json()
-    assert me == {"id": ALICE, "name": "Notion a", "email": "a@example.com", "board": False}
+    assert me == {"id": ALICE, "name": "Notion a", "email": "a@example.com"}
     assert client.get("/optional").json() == {"id": ALICE}
-    assert client.get("/board").status_code == 403
 
 
 def test_token_exchange_request(client, token_requests):
@@ -155,12 +149,6 @@ def test_token_exchange_request(client, token_requests):
     assert request.headers["notion-version"] == "2022-06-28"
     assert json.loads(request.content) == {"grant_type": "authorization_code", "code": "code-alice",
                                            "redirect_uri": f"{BASE_ORIGIN}/auth/callback"}
-
-
-def test_board_member_gets_board_role(client):
-    sign_in(client, "code-bob")
-    assert client.get("/whoami").json()["board"] is True
-    assert client.get("/board").json() == {"id": BOB}
 
 
 @pytest.mark.parametrize("code", ["code-mallory", "code-eve"])
@@ -252,17 +240,12 @@ def untick(notion, uid, prop):
             page["properties"][prop]["checkbox"] = False
 
 
-def test_role_revocation_takes_effect_after_cache_refresh(client, notion):
+def test_membership_revocation_takes_effect_after_cache_refresh(client, notion):
     sign_in(client, "code-bob")
-    assert client.get("/board").status_code == 200
-
-    untick(notion, BOB, "Zarząd")
-    assert client.get("/board").status_code == 200
-    auth._members["at"] -= auth.MEMBERS_TTL
-    assert client.get("/board").status_code == 403
     assert client.get("/whoami").status_code == 200
 
     untick(notion, BOB, "Aktywny członek")
+    assert client.get("/whoami").status_code == 200
     auth._members["at"] -= auth.MEMBERS_TTL
     response = client.get("/whoami")
     assert response.status_code == 403

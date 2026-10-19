@@ -22,9 +22,9 @@ def checkbox(value):
     return {"type": "checkbox", "checkbox": value}
 
 
-def member(person_id, name, active=True, board=False):
+def member(person_id, name, active=True):
     return {"Imię i Nazwisko": title(name), "Person": people(*([person_id] if person_id else [])),
-            "Aktywny członek": checkbox(active), "Zarząd": checkbox(board)}
+            "Aktywny członek": checkbox(active)}
 
 
 def _stored(props):
@@ -51,8 +51,6 @@ def _matches(page, flt):
         return any(p["id"] == flt["people"]["contains"] for p in prop.get("people", []))
     if "rich_text" in flt:
         return _plain(prop) == flt["rich_text"]["equals"]
-    if flt.get("number") == {"is_not_empty": True}:
-        return prop.get("number") is not None
     raise AssertionError(f"unsupported filter {flt}")
 
 

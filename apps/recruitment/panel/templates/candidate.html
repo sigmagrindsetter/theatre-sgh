@@ -20,6 +20,7 @@
 {% endif %}
 
 <dl class="fields">
+  {% if group %}<dt>Rozmowa</dt><dd>{{ group }}</dd>{% endif %}
   <dt>Zgłoszenie</dt><dd>{{ c.czas_local }}</dd>
   <dt>Imię i nazwisko</dt><dd>{{ c.name }}</dd>
   <dt>Adres e-mail</dt><dd>{{ c.email }}</dd>
@@ -40,7 +41,30 @@
   <label for="komentarz">Komentarz</label>
   <textarea id="komentarz" maxlength="2000" rows="6">{{ grade.komentarz if grade else '' }}</textarea>
   <p id="status" role="status">{% if grade and grade.saved_time %}Zapisano {{ grade.saved_time }}{% endif %}</p>
-  <p class="muted">Ocenę i komentarz widzisz tylko Ty i Zarząd. Zmiany zapisują się automatycznie.</p>
+  <p class="muted">Twoja ocena wchodzi do średniej, a komentarz widzą pozostali oceniający – bez Twojego imienia.
+    Zmiany zapisują się automatycznie.</p>
+</section>
+
+<section id="others">
+  <h2>II etap – wszyscy oceniający</h2>
+  <p>Średnia ocen (z Twoją):
+    {% if average %}<strong>{{ "%.2f" | format(average.average) | replace(".", ",") }}</strong>
+    <span class="muted">(liczba ocen: {{ average.count }})</span>{% else %}<span class="muted">brak ocen</span>{% endif %}</p>
+  <h3>Komentarze pozostałych oceniających</h3>
+  {% if others %}
+  <ul class="comments">{% for k in others %}<li>{{ k }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="muted">Brak komentarzy innych oceniających.</p>
+  {% endif %}
+</section>
+
+<section id="stage1">
+  <h2>Komentarze z I etapu</h2>
+  {% if stage1 %}
+  <ul class="comments">{% for k in stage1 %}<li>{{ k }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="muted">Brak komentarzy z I etapu.</p>
+  {% endif %}
 </section>
 {% endblock %}
 {% block scripts %}<script src="/static/app.js" defer></script>{% endblock %}

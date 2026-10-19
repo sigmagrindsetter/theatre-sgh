@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Notion schema of the review panel (REVIEW_PANEL_SPEC.md §4): Kandydaci and Oceny under the board page
+Notion schema of the review panel (REVIEW_PANEL_SPEC.md §4, §11): Kandydaci, Oceny and Oceny II etap
+under the board page
 Idempotent: creates missing databases, properties and board views; never deletes, renames or retypes
 anything except the one-time rename of the synced relation property on Kandydaci to "Oceny"
 """
@@ -28,6 +29,7 @@ KANDYDACI_PROPERTIES = {
     "Filmik znormalizowany": {"url": {}},
     "Status filmiku": {"select": {"options": [{"name": "youtube"}, {"name": "drive"}]}},
     "Zdjęcie": {"files": {}},
+    "II etap": {"checkbox": {}},
 }
 
 OCENY_PROPERTIES = {
@@ -49,7 +51,8 @@ ROLLUPS = {
                                "function": "not_empty"}},
 }
 
-MEMBERS_PROPERTIES = {"Person": "people", "Aktywny członek": "checkbox", "Zarząd": "checkbox"}
+MEMBERS_PROPERTIES = {"Person": "people", "Aktywny członek": "checkbox"}
+ZAPISY_PROPERTIES = {"Imię i nazwisko": "title", "Wybór grupy": "select"}
 
 # The Views API needs Notion-Version 2025-09-03 or later; everything else stays on notion-client's default
 VIEWS_API_VERSION = "2026-03-11"
@@ -90,11 +93,20 @@ def check_members(client):
         properties = client.databases.retrieve(config.MEMBERS_DATABASE_ID)["properties"]
     except APIResponseError as error:
         raise SetupError(f"Lista członków is not readable ({error.code})")
-    if "Zarząd" not in properties:
-        raise SetupError("Lista członków has no checkbox 'Zarząd': the board adds it in Notion, then rerun")
     for name, kind in MEMBERS_PROPERTIES.items():
         if properties.get(name, {}).get("type") != kind:
             raise SetupError(f"Lista członków: '{name}' must be a {kind} property")
+
+
+def check_zapisy(client):
+    try:
+        properties = client.databases.retrieve(config.ZAPISY_DATABASE_ID)["properties"]
+    except APIResponseError as error:
+        raise SetupError(f"Interview sign-ups {config.ZAPISY_DATABASE_ID} are not readable ({error.code}): "
+                         "open the database in Notion → ••• → Connections → add theatre-sgh")
+    for name, kind in ZAPISY_PROPERTIES.items():
+        if properties.get(name, {}).get("type") != kind:
+            raise SetupError(f"Interview sign-ups: '{name}' must be a {kind} property")
 
 
 def child_databases(client):
@@ -175,7 +187,15 @@ class Setup:
         kandydaci = self.add_missing(kandydaci, config.KANDYDACI_TITLE, ROLLUPS)
         self.ensure_views(oceny, config.OCENY_TITLE)
         self.ensure_views(kandydaci, config.KANDYDACI_TITLE)
-        return kandydaci["id"], oceny["id"]
+
+        # one-way: a second synced relation and rollups on Kandydaci would only clutter it
+        one_way = {RELATION: {"relation": {"database_id": kandydaci["id"], "type": "single_property",
+                                           "single_property": {}}}}
+        oceny_ii = self.ensure(databases, config.OCENY_II_TITLE, {**OCENY_PROPERTIES, **one_way})
+        link = oceny_ii["properties"][RELATION]
+        if link["type"] != "relation" or plain(link["relation"]["database_id"]) != plain(kandydaci["id"]):
+            raise SetupError(f"{config.OCENY_II_TITLE}.{RELATION} must be a relation to Kandydaci {kandydaci['id']}")
+        return kandydaci["id"], oceny["id"], oceny_ii["id"]
 
     def ensure_views(self, database, title):
         """Create the board views missing by name, as tables sorted descending, grouped where given."""
@@ -201,8 +221,9 @@ def main():
     try:
         check_board_page(client)
         check_members(client)
+        check_zapisy(client)
         setup = Setup(client, views_client())
-        kandydaci_id, oceny_id = setup.run()
+        kandydaci_id, oceny_id, oceny_ii_id = setup.run()
     except (SetupError, APIResponseError) as error:
         print(f"✗ {error}")
         return 1
@@ -212,6 +233,7 @@ def main():
         print("Nothing changed: schema already up to date")
     print(f"{config.KANDYDACI_TITLE}: {kandydaci_id}")
     print(f"{config.OCENY_TITLE}: {oceny_id}")
+    print(f"{config.OCENY_II_TITLE}: {oceny_ii_id}")
     return 0
 
 

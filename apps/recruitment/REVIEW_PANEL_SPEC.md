@@ -406,3 +406,29 @@ C1 is merged → M1 the same day. **Day 2** C5, C8; M2, M3, M4. **Day 3** C9, C1
   in Notion was considered and dropped: the app is their only window, one place to look, nothing to leak.
 - Ingest in GitHub Actions (previous plan): replaced by an endpoint in the service — real-time
   trigger without a GitHub PAT in Apps Script, no best-effort cron, no SA key outside GCP.
+
+## 11. Stage II (2026-10-19)
+
+The user's request after the stage I results were sent (18 invited, 4 rejected). Supersedes §1–§5
+where they differ.
+
+- **Candidates**: only Kandydaci with the checkbox `II etap` ticked (set once for the 18 invitees by a
+  one-off script; names and e-mails stay out of this public repo). Anyone else is a 404, card and API alike.
+- **Grades**: stage II grading starts empty in a new database `Oceny II etap` under "Ściśle tajne",
+  same properties and `Klucz` as `Oceny`, one-way relation `Kandydat` (no synced twin or rollups on
+  Kandydaci). `Oceny` (stage I) is kept unchanged as the record; its grades are never shown.
+- **Visibility** (user's decision): each reviewer edits their own stage II grade and comment; on a card
+  they also see the average and count of every reviewer's stage II grades (their own included), the
+  other reviewers' stage II comments and all stage I comments, each without author or time and sorted
+  by text. The list shows the stage II average per candidate. With few grades an average can reveal a
+  single grade; accepted with the request.
+- **Groups**: from the interview sign-ups ("Zgłoszenia na rozmowę rekrutacyjną",
+  `ZAPISY_DATABASE_ID`, workspace-level, connected to the integration): `Wybór grupy` per candidate,
+  matched by name (case, Polish letters and word order ignored), else by the e-mail of `Auto-osoba`;
+  the newest sign-up with a group wins. The list is grouped by it, "Bez grupy" last; unmatched sign-ups
+  are listed below so a typo cannot hide anyone. If the sign-ups are unreadable the list is shown
+  ungrouped with a notice.
+- **Removed**: `/zarzad`, its CSV, the board role (`Zarząd` is no longer read) and the skipped-submission
+  report. The board reads the grades in Notion.
+- **Rollout**: branch → `panel-setup` run on the branch (adds `II etap`, creates `Oceny II etap`;
+  harmless to the running stage I service) → tick the 18 → merge (deploys) only on the user's OK.

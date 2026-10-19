@@ -28,5 +28,5 @@ dl.fields dd { margin: 0; overflow-wrap: anywhere; }
 #grade textarea { width: 100%; font: inherit; padding: .5rem; border: 1px solid var(--line); border-radius: 6px; }
 #status { min-height: 1.5em; color: var(--muted); }
 #status.error { color: var(--accent); font-weight: 600; }
-td.comment { white-space: pre-wrap; overflow-wrap: anywhere; }
+ul.comments li { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: .5rem; }
 td.raw { overflow-wrap: anywhere; }
