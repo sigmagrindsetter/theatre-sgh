@@ -151,7 +151,7 @@ def test_privacy_another_reviewers_grade_shows_only_in_the_average_and_comment_w
         if path == "/":
             assert "10:05" not in html and html.count("SEKRET-BARTKA") == 1
             continue
-        assert "Bartek" not in html and "10:05" not in html.split('id="others"')[1]
+        assert "Bartek" not in html and "10:05" not in html.split('id="comments"')[1]
         assert f'<section id="grade" data-id="{X}" data-ocena="3">' in html
 
 

@@ -33,4 +33,3 @@ td.raw { overflow-wrap: anywhere; }
 tr.candidate td { border-bottom: 0; }
 tr.comments-row td { padding-top: 0; }
 tr.comments-row summary { cursor: pointer; color: var(--accent); }
-tr.comments-row h3 { font-size: 1rem; margin: .75rem 0 .25rem; }

@@ -33,21 +33,26 @@ def test_only_invited_candidates_are_listed_or_reachable(alice, notion):
     assert all(p["total"] == 3 for p in store.progress())
 
 
-def test_stage1_comments_show_without_author_and_stage1_grades_never(alice, notion):
+def test_comments_of_both_stages_form_one_list_without_author_or_stage(alice, notion):
     notion.add(STAGE1, grade_props(X, BOB, 2, "zielony, ale ma potencjał"))
     notion.add(STAGE1, grade_props(X, CAROL, 1, "Świetna dykcja"))
     notion.add(STAGE1, grade_props(X, ALICE, 7, ""))
     notion.add(STAGE1, grade_props(Y, BOB, 4, "inny kandydat"))
     html = alice.get(f"/k/{X}").text
-    stage1 = html.split('id="stage1"')[1]
-    assert "<li>Świetna dykcja</li><li>zielony, ale ma potencjał</li>" in stage1  # by text, not by author
+    comments = html.split('id="comments"')[1]
+    # stage II (Bob's) and stage I comments mixed, ordered by text only
+    assert ("<li>SEKRET-BARTKA</li><li>Świetna dykcja</li><li>zielony, ale ma potencjał</li></ul>"
+            in comments)
+    assert "etap" not in comments
     assert "inny kandydat" not in html
     assert "Bartek" not in html and "Celina" not in html
-    assert "Średnia ocen (z Twoją): <strong>6,00</strong>" in html  # stage II grades 3 and 9
-    assert "Średnia ocen: <strong>3,33</strong>" in stage1  # stage I grades 2, 1 and 7, none shown alone
-    assert all(f">{g}<" not in stage1 and f"{g}/10" not in html for g in (1, 2, 7))
+    averages = html.split('id="averages"')[1].split("</section>")[0]
+    assert "<dt>II etap (z Twoją)</dt><dd><strong>6,00</strong></dd>" in averages  # stage II grades 3 and 9
+    assert "<dt>I etap</dt><dd><strong>3,33</strong></dd>" in averages  # stage I grades 2, 1 and 7
+    shared = averages + comments  # the 1–10 buttons above are the reviewer's own scale
+    assert all(f">{g}<" not in shared and f"{g}/10" not in html for g in (1, 2, 7))
     assert "liczba ocen" not in html
-    assert "Brak komentarzy z I etapu." in alice.get(f"/k/{Z}").text
+    assert "Brak komentarzy." in alice.get(f"/k/{Z}").text
 
 
 def test_own_comment_is_not_repeated_among_the_others(alice, notion):
@@ -64,7 +69,7 @@ def test_average_counts_every_reviewers_stage2_grade_and_own_saves_at_once(alice
     html = alice.get("/").text
     assert "<td>7,00</td>" in html
     assert "<li>nowy</li>" in as_user(CAROL, "Celina N").get(f"/k/{Y}").text
-    assert "Średnia ocen (z Twoją): <strong><span class=\"muted\">—</span></strong>" in alice.get(f"/k/{Z}").text
+    assert "<dt>II etap (z Twoją)</dt><dd><strong><span class=\"muted\">—</span></strong></dd>" in alice.get(f"/k/{Z}").text
 
 
 def test_list_shows_both_averages_without_counts(alice, notion):
@@ -126,7 +131,8 @@ def test_list_toggles_comments_without_author_and_no_single_grade(alice, notion)
     x = html[html.index(f'href="/k/{X}">Adam Pierwszy'):html.index(f'href="/k/{Y}">Zofia Druga')]
     details = x[x.index("<details>"):x.index("</details>")]
     assert "<summary>Komentarze</summary>" in details
-    assert details.index("<li>SEKRET-BARTKA</li>") < details.index("<h3>I etap</h3>") < details.index("<li>STARY-KOMENTARZ</li>")
+    assert "<ul class=\"comments\"><li>SEKRET-BARTKA</li><li>STARY-KOMENTARZ</li></ul>" in details
+    assert "etap" not in details
     assert "komentarz-alicji" not in html  # own comment lives in the card's text box
     assert "o Zofii" not in x and "<li>o Zofii</li>" in html
     candidates = html.split("Postęp oceniania")[0]  # the progress table names reviewers, with counts only
