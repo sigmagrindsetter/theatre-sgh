@@ -1,4 +1,5 @@
 {% extends "panel.html" %}
+{% from "_average.html" import average as show_average %}
 {% block title %}{{ c.name }}{% endblock %}
 {% block content %}
 <p><a href="/">← Wszyscy kandydaci</a></p>
@@ -47,9 +48,7 @@
 
 <section id="others">
   <h2>II etap – wszyscy oceniający</h2>
-  <p>Średnia ocen (z Twoją):
-    {% if average %}<strong>{{ "%.2f" | format(average.average) | replace(".", ",") }}</strong>
-    <span class="muted">(liczba ocen: {{ average.count }})</span>{% else %}<span class="muted">brak ocen</span>{% endif %}</p>
+  <p>Średnia ocen (z Twoją): <strong>{{ show_average(average) }}</strong></p>
   <h3>Komentarze pozostałych oceniających</h3>
   {% if others %}
   <ul class="comments">{% for k in others %}<li>{{ k }}</li>{% endfor %}</ul>
@@ -59,7 +58,9 @@
 </section>
 
 <section id="stage1">
-  <h2>Komentarze z I etapu</h2>
+  <h2>I etap</h2>
+  <p>Średnia ocen: <strong>{{ show_average(stage1_average) }}</strong></p>
+  <h3>Komentarze</h3>
   {% if stage1 %}
   <ul class="comments">{% for k in stage1 %}<li>{{ k }}</li>{% endfor %}</ul>
   {% else %}

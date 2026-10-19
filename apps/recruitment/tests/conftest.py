@@ -34,7 +34,7 @@ def fresh_store(monkeypatch):
     monkeypatch.setattr(store, "_candidates", {"at": None, "list": []})
     monkeypatch.setattr(store, "_grades_ii", {"at": None, "by_key": {}})
     monkeypatch.setattr(store, "_saved", {})
-    monkeypatch.setattr(store, "_stage1", {"at": None, "by_candidate": {}})
+    monkeypatch.setattr(store, "_stage1", {"at": None, "comments": {}, "averages": {}})
     monkeypatch.setattr(store, "_signups", {"at": None, "list": []})
     monkeypatch.setattr(store, "_page_ids", {})
     monkeypatch.setattr(store, "_locks", {})

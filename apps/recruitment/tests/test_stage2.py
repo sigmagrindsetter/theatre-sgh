@@ -43,7 +43,10 @@ def test_stage1_comments_show_without_author_and_stage1_grades_never(alice, noti
     assert "<li>Świetna dykcja</li><li>zielony, ale ma potencjał</li>" in stage1  # by text, not by author
     assert "inny kandydat" not in html
     assert "Bartek" not in html and "Celina" not in html
-    assert "6,00" in html and "liczba ocen: 2" in html  # stage II grades 3 and 9; stage I's 2, 1, 7 left out
+    assert "Średnia ocen (z Twoją): <strong>6,00</strong>" in html  # stage II grades 3 and 9
+    assert "Średnia ocen: <strong>3,33</strong>" in stage1  # stage I grades 2, 1 and 7, none shown alone
+    assert all(f">{g}<" not in stage1 and f"{g}/10" not in html for g in (1, 2, 7))
+    assert "liczba ocen" not in html
     assert "Brak komentarzy z I etapu." in alice.get(f"/k/{Z}").text
 
 
@@ -56,12 +59,24 @@ def test_own_comment_is_not_repeated_among_the_others(alice, notion):
 
 
 def test_average_counts_every_reviewers_stage2_grade_and_own_saves_at_once(alice, notion):
-    assert "6,00 <span class=\"muted\">(2)</span>" in alice.get("/").text
+    assert "<td>6,00</td>" in alice.get("/").text
     assert alice.put(f"/api/oceny/{Y}", json={"ocena": 7, "komentarz": "nowy"}, headers=SAME_ORIGIN).status_code == 200
     html = alice.get("/").text
-    assert "7,00 <span class=\"muted\">(1)</span>" in html
+    assert "<td>7,00</td>" in html
     assert "<li>nowy</li>" in as_user(CAROL, "Celina N").get(f"/k/{Y}").text
-    assert "brak ocen" in alice.get(f"/k/{Z}").text
+    assert "Średnia ocen (z Twoją): <strong><span class=\"muted\">—</span></strong>" in alice.get(f"/k/{Z}").text
+
+
+def test_list_shows_both_averages_without_counts(alice, notion):
+    notion.add(STAGE1, grade_props(X, BOB, 8, ""))
+    notion.add(STAGE1, grade_props(X, CAROL, 5, ""))
+    html = alice.get("/").text
+    assert "<th>Średnia II etap</th><th>Średnia I etap</th>" in html
+    row = html[html.index(f'href="/k/{X}">Adam Pierwszy'):]
+    row = row[:row.index("</tr>")]
+    assert "<td>6,00</td>\n      <td>6,50</td>" in row
+    assert "(2)" not in html and "liczba ocen" not in html
+    assert "8/10" not in html and "5/10" not in html
 
 
 def test_candidates_are_grouped_by_interview_signup(alice, notion):

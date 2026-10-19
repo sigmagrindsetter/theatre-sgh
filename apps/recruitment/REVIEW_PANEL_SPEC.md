@@ -418,10 +418,11 @@ where they differ.
   same properties and `Klucz` as `Oceny`, one-way relation `Kandydat` (no synced twin or rollups on
   Kandydaci). `Oceny` (stage I) is kept unchanged as the record; its grades are never shown.
 - **Visibility** (user's decision): each reviewer edits their own stage II grade and comment; on a card
-  they also see the average and count of every reviewer's stage II grades (their own included), the
-  other reviewers' stage II comments and all stage I comments, each without author or time and sorted
-  by text. The list shows the stage II average per candidate. With few grades an average can reveal a
-  single grade; accepted with the request.
+  they also see the average of every reviewer's stage II grades (their own included), the average of the
+  stage I grades, the other reviewers' stage II comments and all stage I comments, each comment without
+  author or time and sorted by text. The list shows both averages per candidate. Averages only, never the
+  number of grades (user, 2026-10-20). With few grades an average can still reveal a single grade;
+  accepted with the request.
 - **Groups**: from the interview sign-ups ("Zgłoszenia na rozmowę rekrutacyjną",
   `ZAPISY_DATABASE_ID`, workspace-level, connected to the integration): `Wybór grupy` per candidate,
   matched by name (case, Polish letters and word order ignored), else by the e-mail of `Auto-osoba`;
