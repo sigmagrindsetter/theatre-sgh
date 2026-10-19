@@ -1,6 +1,6 @@
 """Every Notion read of the panel and the Oceny II etap upsert (REVIEW_PANEL_SPEC.md §11).
 A grade or comment leaves this module with its author only to that author; to others only as an average
-or as a comment without author or time."""
+or as a comment without author or time. Stage I grades leave it only as averages."""
 import re
 import threading
 import time
@@ -31,7 +31,7 @@ _candidates_lock = threading.Lock()
 _grades_ii = {"at": None, "by_key": {}}
 _saved = {}  # Klucz -> row saved by this process: a new row lags in queries for a while
 _grades_ii_lock = threading.Lock()
-_stage1 = {"at": None, "by_candidate": {}}
+_stage1 = {"at": None, "comments": {}, "averages": {}}
 _stage1_lock = threading.Lock()
 _signups = {"at": None, "list": []}
 _signups_lock = threading.Lock()
@@ -288,13 +288,18 @@ def progress():
     return sorted(rows, key=lambda r: r["name"].lower())
 
 
-def averages():
-    """Candidate id -> {average, count} of every reviewer's stage II grades."""
+def _averages(rows):
+    """Candidate id -> average of the grades in the rows; no count, so a single grade is harder to work out."""
     values = defaultdict(list)
-    for row in _rows_ii():
+    for row in rows:
         if row["ocena"] is not None:
             values[row["cid"]].append(row["ocena"])
-    return {cid: {"average": sum(v) / len(v), "count": len(v)} for cid, v in values.items()}
+    return {cid: sum(v) / len(v) for cid, v in values.items()}
+
+
+def averages():
+    """Candidate id -> average of every reviewer's stage II grades."""
+    return _averages(_rows_ii())
 
 
 def _fold(text):
@@ -313,17 +318,28 @@ def others_comments(user, cid):
     return _anonymous(row["komentarz"] for row in _rows_ii() if row["cid"] == cid and row["uid"] != user.id)
 
 
-def stage1_comments(cid):
-    """Stage I comments on the candidate, without author, time or grade; cached for 10 minutes."""
+def _stage1_data():
+    """Stage I comments per candidate without author, time or grade, and stage I averages; cached for 10 minutes."""
     with _stage1_lock:
         now = time.monotonic()
         if _stage1["at"] is None or now - _stage1["at"] >= STAGE1_TTL:
+            rows = list(_live_rows(config.OCENY_TITLE).values())
             by_candidate = defaultdict(list)
-            for row in _live_rows(config.OCENY_TITLE).values():
+            for row in rows:
                 by_candidate[row["cid"]].append(row["komentarz"])
-            _stage1["by_candidate"] = {c: _anonymous(comments) for c, comments in by_candidate.items()}
+            _stage1["comments"] = {c: _anonymous(comments) for c, comments in by_candidate.items()}
+            _stage1["averages"] = _averages(rows)
             _stage1["at"] = now
-        return _stage1["by_candidate"].get(cid, [])
+        return _stage1
+
+
+def stage1_comments(cid):
+    return _stage1_data()["comments"].get(cid, [])
+
+
+def stage1_averages():
+    """Candidate id -> average of every reviewer's stage I grades."""
+    return _stage1_data()["averages"]
 
 
 def _name_key(name):

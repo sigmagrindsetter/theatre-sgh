@@ -5,8 +5,8 @@ them (1–10 plus a comment). It exists because Notion Plus cannot hide rows per
 [`REVIEW_PANEL_SPEC.md`](REVIEW_PANEL_SPEC.md) is the source of truth; §10 explains why it is built
 this way, §11 describes what the panel shows in stage II (interviews from 2026-10-21): only candidates invited to
 stage II, grouped by the interview group they signed up for, graded afresh; every reviewer sees the
-average of the stage II grades and the other reviewers' comments without their authors, plus the
-stage I comments without authors or grades.
+averages of the stage II and stage I grades (never single grades or their number), the other reviewers'
+comments without their authors, and the stage I comments without authors.
 
 ## Architecture
 
@@ -94,7 +94,7 @@ First deploy: merge → `panel-deploy` stops at the secrets check → run `panel
 
 ## Privacy model
 
-- Every grade write and every read of a grade with its author is scoped to the session user: no endpoint takes a user id, and each `Oceny II etap` row is re-checked by its `Klucz` (`<candidate id>|<user id>`). Other reviewers' grades leave `store.py` only as a per-candidate average and count, their comments only without author or time and sorted by text; stage I grades are never read into a page. The progress table shows counts only.
+- Every grade write and every read of a grade with its author is scoped to the session user: no endpoint takes a user id, and each `Oceny II etap` row is re-checked by its `Klucz` (`<candidate id>|<user id>`). Other reviewers' grades, and all stage I grades, leave `store.py` only as a per-candidate average (no count), their comments only without author or time and sorted by text. The progress table shows counts only.
 - In Notion the grade databases sit under "Ściśle tajne" (board and integration only), so reviewers cannot open them there.
 - The bot token is used only on Cloud Run (and by `panel-setup` for the schema); the user's OAuth token is discarded at sign-in.
 - CSRF: OAuth `state` cookie, `SameSite=Lax` session cookie, same-origin check (`Sec-Fetch-Site` or `Origin`) on `PUT` and logout, and `PUT` accepts only `application/json`. Every response carries a strict CSP, `nosniff` and `strict-origin-when-cross-origin`; 404 and 500 pages show no error details.

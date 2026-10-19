@@ -1,4 +1,5 @@
 {% extends "panel.html" %}
+{% from "_average.html" import average %}
 {% block title %}Kandydaci{% endblock %}
 {% block content %}
 <h1>Kandydaci – II etap</h1>
@@ -8,15 +9,16 @@
 {% for group, rows in sections %}
 {% if group %}<h2>{{ group }} <span class="muted">({{ rows | length }})</span></h2>{% endif %}
 <table class="candidates">
-  <thead><tr><th></th><th>Imię i nazwisko</th><th>Obszary</th><th>Rok studiów</th><th>Średnia</th><th>Twoja ocena</th></tr></thead>
+  <thead><tr><th></th><th>Imię i nazwisko</th><th>Obszary</th><th>Rok studiów</th><th>Średnia II etap</th><th>Średnia I etap</th><th>Twoja ocena</th></tr></thead>
   <tbody>
-  {% for c, grade, average in rows %}
+  {% for c, grade, stage2, stage1 in rows %}
     <tr>
       <td>{% if c.thumbnail %}<a href="/k/{{ c.id }}"><img class="thumb" src="{{ c.thumbnail }}" alt="" loading="lazy"></a>{% endif %}</td>
       <td><a href="/k/{{ c.id }}">{{ c.name }}</a></td>
       <td>{{ c.obszary | join(", ") }}</td>
       <td>{{ c.rok }}</td>
-      <td>{% if average %}{{ "%.2f" | format(average.average) | replace(".", ",") }} <span class="muted">({{ average.count }})</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{{ average(stage2) }}</td>
+      <td>{{ average(stage1) }}</td>
       <td>{% if grade and grade.ocena is not none %}{{ grade.ocena }}/10{% else %}<span class="muted">brak oceny</span>{% endif %}</td>
     </tr>
   {% endfor %}
