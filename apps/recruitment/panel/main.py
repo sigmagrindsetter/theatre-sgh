@@ -25,9 +25,11 @@ NO_STORE = {"Cache-Control": "no-store"}
 CSV_HEADER = ["Kandydat", "Email", "Średnia", "Liczba ocen", "Oceniający", "Ocena", "Komentarz", "Ostatni zapis"]
 FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 SECURITY_HEADERS = {
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' https://i.ytimg.com; "
-                               "frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; "
-                               "form-action 'self'; object-src 'none'; script-src 'self'; style-src 'self'",
+    # Drive thumbnails redirect to lh3.googleusercontent.com
+    "Content-Security-Policy": "default-src 'self'; "
+                               "img-src 'self' https://i.ytimg.com https://drive.google.com https://lh3.googleusercontent.com; "
+                               "frame-src https://www.youtube-nocookie.com https://drive.google.com; frame-ancestors 'none'; "
+                               "base-uri 'none'; form-action 'self'; object-src 'none'; script-src 'self'; style-src 'self'",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
 }

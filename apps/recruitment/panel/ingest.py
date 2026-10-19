@@ -14,7 +14,7 @@ from google.oauth2 import id_token
 import config
 from panel.notion_dbs import database_id
 from panel.web import secret
-from panel.youtube import parse_video, thumbnail
+from panel.youtube import drive_thumbnail, drive_video, parse_video, thumbnail
 from shared.auth import GoogleAuth, NotionAuth
 
 router = APIRouter()
@@ -125,15 +125,17 @@ def properties(email, row, video):
 def body(row, video):
     if video.kind == "youtube":
         player = {"type": "video", "video": {"type": "external", "external": {"url": video.url}}}
+    elif video.video_id:
+        player = {"type": "embed", "embed": {"url": f"https://drive.google.com/file/d/{video.video_id}/preview"}}
     else:
         player = {"type": "embed", "embed": {"url": video.url}}
     raw = {"type": "text", "text": {"content": row["filmik"][:2000], "link": {"url": video.url}}}
     return [player, {"type": "paragraph", "paragraph": {"rich_text": [raw]}}]
 
 
-def upload_thumbnail(client, video_id):
-    """File Upload id of the YouTube thumbnail (usable as both Zdjęcie and cover), or None if there is none."""
-    image = thumbnail(video_id)
+def upload_thumbnail(client, video):
+    """File Upload id of the video thumbnail (usable as both Zdjęcie and cover), or None if there is none."""
+    image = thumbnail(video.video_id) if video.kind == "youtube" else drive_thumbnail(video.video_id)
     if not image:
         return None
     content, content_type = image
@@ -151,7 +153,7 @@ def create_candidate(client, kandydaci, email, row, video):
             "children": body(row, video)}
     if video.video_id:
         try:
-            upload = upload_thumbnail(client, video.video_id)
+            upload = upload_thumbnail(client, video)
         except Exception as error:  # the photo is optional, the candidate is not
             upload, reason = None, type(error).__name__
         else:
@@ -178,7 +180,7 @@ def run_ingest(kandydaci):
                 result["existing"] += 1
                 continue
             try:
-                create_candidate(client, kandydaci, email, row, video)
+                create_candidate(client, kandydaci, email, row, drive_video(video))
             except Exception as error:  # one bad row must not block the others
                 print(f"Ingest: row {row['row']} not created ({type(error).__name__})")
                 result["errors"] += 1

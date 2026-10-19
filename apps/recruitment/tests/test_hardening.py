@@ -34,9 +34,9 @@ UNKNOWN = "99999999-9999-4999-8999-999999999999"
 SAME_ORIGIN = {"Sec-Fetch-Site": "same-origin"}
 JSON = {**SAME_ORIGIN, "Content-Type": "application/json"}
 SENTINEL = "SENTINEL-5b1e"
-CSP = ("default-src 'self'; img-src 'self' https://i.ytimg.com; frame-src https://www.youtube-nocookie.com; "
-       "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'; script-src 'self'; "
-       "style-src 'self'")
+CSP = ("default-src 'self'; img-src 'self' https://i.ytimg.com https://drive.google.com https://lh3.googleusercontent.com; "
+       "frame-src https://www.youtube-nocookie.com https://drive.google.com; frame-ancestors 'none'; base-uri 'none'; "
+       "form-action 'self'; object-src 'none'; script-src 'self'; style-src 'self'")
 TEMPLATES = Path(__file__).resolve().parent.parent / "panel" / "templates"
 
 

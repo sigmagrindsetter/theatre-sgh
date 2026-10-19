@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 import config
 from panel import ingest
 from panel.main import app
+from panel.youtube import drive_file
 from shared.auth import GoogleAuth
 
 HEADER = ["Sygnatura czasowa", "Imię i nazwisko:", "Adres e-mail:", "Na jakiej uczelni studiujesz?",
@@ -84,6 +85,8 @@ def notion(monkeypatch):
     use(monkeypatch, fake)
     monkeypatch.setattr(ingest, "GoogleAuth", SimpleNamespace(get_client=lambda: FakeSheet([HEADER, *ROWS])))
     monkeypatch.setattr(ingest, "thumbnail", lambda video_id: (b"jpeg", "image/jpeg"))
+    monkeypatch.setattr(ingest, "drive_thumbnail", lambda file_id: (b"png", "image/png"))
+    monkeypatch.setattr(ingest, "drive_video", lambda video: video)  # the folder stays unresolved
     monkeypatch.setattr(ingest, "_created", set())
     monkeypatch.setattr(ingest, "database_id", lambda title: "kandydaci-db")
     return fake
@@ -131,6 +134,23 @@ def test_page_properties_and_body(notion):
     assert dawid["children"][0] == {"type": "embed", "embed": {"url": ROWS[6][6]}}
     assert "cover" not in dawid and "Zdjęcie" not in dawid["properties"]
     assert notion.uploads == [{"mode": "single_part", "filename": "miniatura.jpg", "content_type": "image/jpeg"}] * 2
+
+
+def test_drive_folder_resolved_to_its_video_gets_player_and_photo(notion, monkeypatch):
+    resolved = []
+    monkeypatch.setattr(ingest, "drive_video", lambda video: resolved.append(video) or drive_file("1DawidVideoXyz"))
+    ingest.run_ingest("kandydaci-db")
+    dawid = by_email(notion)["dawid@example.com"]
+    assert [video.url for video in resolved if video.kind == "drive"] == [ROWS[6][6]]
+    assert dawid["properties"]["Filmik"]["url"] == ROWS[6][6]
+    assert dawid["properties"]["Filmik znormalizowany"]["url"] == "https://drive.google.com/file/d/1DawidVideoXyz/view"
+    assert dawid["children"][0] == {"type": "embed", "embed": {
+        "url": "https://drive.google.com/file/d/1DawidVideoXyz/preview"}}
+    assert dawid["children"][1]["paragraph"]["rich_text"][0]["text"]["link"] == {
+        "url": "https://drive.google.com/file/d/1DawidVideoXyz/view"}
+    image = {"type": "file_upload", "file_upload": {"id": "upload-3"}}
+    assert dawid["cover"] == image and dawid["properties"]["Zdjęcie"]["files"] == [{**image, "name": "miniatura.jpg"}]
+    assert notion.uploads[2] == {"mode": "single_part", "filename": "miniatura.jpg", "content_type": "image/png"}
 
 
 def test_second_run_creates_nothing(notion):

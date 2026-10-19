@@ -1,4 +1,4 @@
-"""Video link from the form answer: YouTube or Google Drive, normalised; YouTube thumbnail fetch."""
+"""Video link from the form answer: YouTube or Google Drive, normalised; Drive folder → video; thumbnail fetch."""
 import re
 from typing import NamedTuple, Optional
 from urllib.parse import parse_qs, urlsplit
@@ -12,12 +12,17 @@ LINK = re.compile(
 )
 VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}(?![A-Za-z0-9_-])")
 TRAILING = ".,;:!?)]}>"
+DRIVE_FILE = re.compile(r"/file/d/([A-Za-z0-9_-]{10,})")
+DRIVE_FOLDER = re.compile(r"/folders/([A-Za-z0-9_-]{10,})")
+FOLDER_ENTRY = re.compile(r'id="entry-([A-Za-z0-9_-]{10,})"')
+# Drive serves thumbnails as application/binary
+IMAGE_TYPES = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG", "image/png"))
 
 
 class Video(NamedTuple):
     kind: str  # "youtube" | "drive"
-    url: str  # https://www.youtube.com/watch?v=<id> or the Drive URL
-    video_id: Optional[str]
+    url: str  # https://www.youtube.com/watch?v=<id>, https://drive.google.com/file/d/<id>/view or the Drive URL
+    video_id: Optional[str]  # YouTube id or Drive file id; None for a Drive folder
 
 
 def parse_video(raw):
@@ -29,6 +34,9 @@ def parse_video(raw):
         parts = urlsplit(link)
         host = parts.hostname or ""
         if host == "drive.google.com":
+            file = DRIVE_FILE.search(parts.path)
+            if file:
+                return drive_file(file.group(1))
             if parts.path.strip("/"):
                 return Video("drive", "https://" + link.split("://", 1)[1], None)
             continue
@@ -36,6 +44,30 @@ def parse_video(raw):
         if video_id:
             return Video("youtube", f"https://www.youtube.com/watch?v={video_id}", video_id)
     return None
+
+
+def drive_file(file_id):
+    return Video("drive", f"https://drive.google.com/file/d/{file_id}/view", file_id)
+
+
+def drive_video(video, transport=None):
+    """A Drive folder link resolved to the first video in it, else the video unchanged; network errors never escape.
+    Reads Drive's public folder view, so it works for the "anyone with the link" folders the form asks for."""
+    folder = DRIVE_FOLDER.search(urlsplit(video.url).path) if video.kind == "drive" and not video.video_id else None
+    if not folder:
+        return video
+    try:
+        with httpx.Client(timeout=10, transport=transport, follow_redirects=True) as http:
+            response = http.get("https://drive.google.com/embeddedfolderview", params={"id": folder.group(1)})
+    except httpx.HTTPError:
+        return video
+    if response.status_code != 200:
+        return video
+    for entry in response.text.split('class="flip-entry"')[1:]:
+        file = FOLDER_ENTRY.match(entry.lstrip())
+        if file and "/type/video/" in entry:
+            return drive_file(file.group(1))
+    return video
 
 
 def _youtube_id(host, parts):
@@ -64,4 +96,19 @@ def thumbnail(video_id, transport=None):
                     return None
     except httpx.HTTPError:
         return None
+    return None
+
+
+def drive_thumbnail(file_id, transport=None):
+    """(bytes, content_type) of the Drive thumbnail of a publicly shared file, or None; network errors never escape."""
+    try:
+        with httpx.Client(timeout=10, transport=transport, follow_redirects=True) as http:
+            response = http.get("https://drive.google.com/thumbnail", params={"id": file_id, "sz": "w1280"})
+    except httpx.HTTPError:
+        return None
+    if response.status_code != 200:
+        return None
+    for magic, content_type in IMAGE_TYPES:
+        if response.content.startswith(magic):
+            return response.content, content_type
     return None
