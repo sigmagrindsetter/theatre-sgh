@@ -135,12 +135,20 @@ def test_first_run_creates_schema(monkeypatch, capsys):
         assert grades["Kandydat"]["relation"]["database_id"] == database_id(fake, "Kandydaci")
     assert oceny["Kandydat"]["relation"]["type"] == "dual_property"
     assert oceny_ii["Kandydat"]["relation"]["type"] == "single_property"
+    komentarze = schema(fake, "Komentarze II etap")
+    assert {name: p["type"] for name, p in komentarze.items()} == {
+        "Nazwa": "title", "Kandydat": "relation", "Oceniający": "people", "Komentarz": "rich_text", "Czas": "date",
+        "Klucz": "rich_text",
+    }
+    assert komentarze["Kandydat"]["relation"] == {"database_id": database_id(fake, "Kandydaci"),
+                                                  "type": "single_property", "single_property": {}}
     assert kandydaci["Średnia"]["rollup"]["function"] == "average"
     assert kandydaci["Liczba ocen"]["rollup"]["function"] == "not_empty"
     assert kandydaci["Liczba ocen"]["rollup"]["relation_property_name"] == "Oceny"
     out = capsys.readouterr().out
     assert "created database Kandydaci" in out and "db-1" in out
     assert f"Oceny II etap: {database_id(fake, 'Oceny II etap')}" in out
+    assert f"Komentarze II etap: {database_id(fake, 'Komentarze II etap')}" in out
 
 
 def test_first_run_creates_board_views(monkeypatch):

@@ -19,19 +19,27 @@
       <td>{{ c.rok }}</td>
       <td>{{ average(stage2) }}</td>
       <td>{{ average(stage1) }}</td>
-      <td>{% if grade and grade.ocena is not none %}{{ grade.ocena }}/10{% else %}<span class="muted">brak oceny</span>{% endif %}</td>
+      <td>
+        <select class="ocena" data-id="{{ c.id }}" aria-label="Twoja ocena: {{ c.name }}">
+          <option value="">brak oceny</option>
+          {% for n in range(1, 11) %}<option value="{{ n }}"{% if grade and grade.ocena == n %} selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+        <span class="saved" role="status"></span>
+      </td>
     </tr>
     <tr class="comments-row">
       <td></td>
       <td colspan="6">
-        {% if comments %}
         <details>
           <summary>Komentarze</summary>
           <ul class="comments">{% for k in comments %}<li>{{ k }}</li>{% endfor %}</ul>
+          {% if not comments %}<p class="muted none">Brak komentarzy</p>{% endif %}
+          <form class="add-comment" method="post" data-id="{{ c.id }}">
+            <textarea name="komentarz" maxlength="2000" rows="3" required placeholder="Nowy komentarz (anonimowy)" aria-label="Nowy komentarz: {{ c.name }}"></textarea>
+            <button type="submit">Dodaj komentarz</button>
+            <span class="saved" role="status"></span>
+          </form>
         </details>
-        {% else %}
-        <span class="muted">Brak komentarzy</span>
-        {% endif %}
       </td>
     </tr>
   {% endfor %}
@@ -60,4 +68,4 @@
   </tbody>
 </table>
 {% endblock %}
-{% block scripts %}<script src="/static/app.js" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/list.js" defer></script>{% endblock %}

@@ -25,7 +25,7 @@ from panel import auth, ingest, main, notion_dbs, ratelimit, store
 from panel.main import app
 from shared.auth import NotionAuth
 
-KANDYDACI, OCENY = "kandydaci-db", "oceny-ii-db"
+KANDYDACI, OCENY, KOMENTARZE = "kandydaci-db", "oceny-ii-db", "komentarze-ii-db"
 ALICE = "a0000000-0000-4000-8000-000000000001"  # reviewer
 BOB = "b0000000-0000-4000-8000-000000000002"    # second reviewer
 X = "11111111-1111-4111-8111-111111111111"      # YouTube candidate
@@ -45,7 +45,7 @@ def notion(monkeypatch):
     fake = FakeNotion()
     monkeypatch.setattr(NotionAuth, "_client", fake)
     monkeypatch.setattr(notion_dbs, "_ids", {config.KANDYDACI_TITLE: KANDYDACI, config.OCENY_II_TITLE: OCENY,
-                                             config.OCENY_TITLE: "oceny-db"})
+                                             config.OCENY_TITLE: "oceny-db", config.KOMENTARZE_II_TITLE: KOMENTARZE})
     monkeypatch.setattr(auth, "_members", {"at": None, "by_person": {}})
     monkeypatch.setattr(store, "_candidates", {"at": None, "list": []})
     monkeypatch.setattr(store, "_page_ids", {})

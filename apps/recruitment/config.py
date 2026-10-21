@@ -12,6 +12,7 @@ BOARD_PAGE_ID = os.getenv("BOARD_PAGE_ID", "3f73f4160a37806b8fa9feb5cfdb083b")
 KANDYDACI_TITLE = "Kandydaci"
 OCENY_TITLE = "Oceny"  # stage I: kept as a record, the panel reads only its comments
 OCENY_II_TITLE = "Oceny II etap"
+KOMENTARZE_II_TITLE = "Komentarze II etap"  # any number of anonymous comments per reviewer and candidate
 
 # Interview sign-ups of stage II ("Wybór grupy"); a workspace-level database shared with the integration
 ZAPISY_DATABASE_ID = os.getenv("ZAPISY_DATABASE_ID", "d303f4160a3782eb876b815d54dae4df")

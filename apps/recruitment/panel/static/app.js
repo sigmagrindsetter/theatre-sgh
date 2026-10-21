@@ -1,13 +1,6 @@
 // Grade autosave on the candidate card: debounced PUT /api/oceny/<id>, flushed when leaving the page.
 (() => {
   const box = document.getElementById("grade");
-  if (!box) {
-    // the list restored from the back/forward cache predates the latest saves
-    window.addEventListener("pageshow", (event) => {
-      if (event.persisted) location.reload();
-    });
-    return;
-  }
   const DELAY = 1500;
   const url = "/api/oceny/" + encodeURIComponent(box.dataset.id);
   const text = document.getElementById("komentarz");

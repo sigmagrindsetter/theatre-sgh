@@ -1,10 +1,11 @@
-"""Every Notion read of the panel and the Oceny II etap upsert (REVIEW_PANEL_SPEC.md §11).
+"""Every Notion read of the panel, the Oceny II etap upsert and Komentarze II etap adds (REVIEW_PANEL_SPEC.md §11).
 A grade or comment leaves this module with its author only to that author; to others only as an average
 or as a comment without author or time. Stage I grades leave it only as averages."""
 import re
 import threading
 import time
 import unicodedata
+import uuid
 from collections import defaultdict
 from datetime import datetime
 from urllib.parse import parse_qs, urlsplit
@@ -31,6 +32,9 @@ _candidates_lock = threading.Lock()
 _grades_ii = {"at": None, "by_key": {}}
 _saved = {}  # Klucz -> row saved by this process: a new row lags in queries for a while
 _grades_ii_lock = threading.Lock()
+_comments_ii = {"at": None, "by_key": {}}
+_added = {}  # Klucz -> comment added by this process: a new row lags in queries
+_comments_ii_lock = threading.Lock()
 _stage1 = {"at": None, "comments": {}, "averages": {}}
 _stage1_lock = threading.Lock()
 _signups = {"at": None, "list": []}
@@ -206,8 +210,9 @@ def _rich_text(value):
     return [{"text": {"content": value[i:i + 1000]}} for i in range(0, len(value), 1000)]
 
 
-def save_grade(user, cid, ocena, komentarz):
-    """Upsert the session user's row for this candidate; returns the save time (ISO, Europe/Warsaw)."""
+def save_grade(user, cid, ocena, komentarz=None):
+    """Upsert the session user's row for this candidate, keeping its comment when komentarz is None;
+    returns the save time (ISO, Europe/Warsaw)"""
     found = candidate(cid)
     if found is None:
         raise LookupError(cid)
@@ -218,33 +223,77 @@ def save_grade(user, cid, ocena, komentarz):
         "Kandydat": {"relation": [{"id": found["id"]}]},
         "Oceniający": {"people": [{"id": user.id}]},
         "Ocena": {"number": ocena},
-        "Komentarz": {"rich_text": _rich_text(komentarz)},
         "Ostatni zapis": {"date": {"start": saved_at}},
         "Klucz": {"rich_text": _rich_text(key)},
     }
+    if komentarz is not None:
+        properties["Komentarz"] = {"rich_text": _rich_text(komentarz)}
     client = NotionAuth.get_client()
     with _lock(key):
+        page = None
         page_id = _page_ids.get(key)
         if page_id:
             try:
-                client.pages.update(page_id=page_id, properties=properties)
-                return saved_at
+                page = client.pages.update(page_id=page_id, properties=properties)
             except APIResponseError as error:
                 if error.code not in GONE:
                     raise
                 _page_ids.pop(key, None)
-        page = _own_page(key)
-        if page:
-            client.pages.update(page_id=page["id"], properties=properties)
-        else:
-            page = client.pages.create(parent={"database_id": database_id(config.OCENY_II_TITLE)}, properties=properties)
-            _page_ids[key] = page["id"]
-    row = {"cid": found["id"], "uid": user.id, "ocena": ocena, "komentarz": komentarz, "saved_at": saved_at}
+        if page is None:
+            page = _own_page(key)
+            if page:
+                page = client.pages.update(page_id=page["id"], properties=properties)
+            else:
+                page = client.pages.create(parent={"database_id": database_id(config.OCENY_II_TITLE)},
+                                           properties=properties)
+                _page_ids[key] = page["id"]
+    kept = _text(page["properties"].get("Komentarz")) if komentarz is None else komentarz
+    row = {"cid": found["id"], "uid": user.id, "ocena": ocena, "komentarz": kept, "saved_at": saved_at}
     with _grades_ii_lock:
         _saved[key] = row
         _grades_ii["by_key"][key] = row
     return saved_at
 
+
+def add_comment(user, cid, komentarz):
+    """A new row in Komentarze II etap; returns the save time (ISO, Europe/Warsaw)."""
+    found = candidate(cid)
+    if found is None:
+        raise LookupError(cid)
+    # a create resent after a Notion 5xx carries the same Klucz, so its twin row is read once
+    key = str(uuid.uuid4())
+    saved_at = datetime.now(WARSAW).isoformat(timespec="seconds")
+    NotionAuth.get_client().pages.create(parent={"database_id": database_id(config.KOMENTARZE_II_TITLE)}, properties={
+        "Nazwa": {"title": _rich_text(f"{found['name']} — {user.name}")},
+        "Kandydat": {"relation": [{"id": found["id"]}]},
+        "Oceniający": {"people": [{"id": user.id}]},
+        "Komentarz": {"rich_text": _rich_text(komentarz)},
+        "Czas": {"date": {"start": saved_at}},
+        "Klucz": {"rich_text": _rich_text(key)},
+    })
+    row = {"cid": found["id"], "komentarz": komentarz}
+    with _comments_ii_lock:
+        _added[key] = row
+        _comments_ii["by_key"][key] = row
+    return saved_at
+
+
+def _comment_rows():
+    """Every live Komentarze II etap row, one per Klucz, cached for 60 s; this process's own adds count at once."""
+    with _comments_ii_lock:
+        now = time.monotonic()
+        if _comments_ii["at"] is None or now - _comments_ii["at"] >= CANDIDATES_TTL:
+            rows = {}
+            for page in _query_all(database_id(config.KOMENTARZE_II_TITLE)):
+                p = page["properties"]
+                key = _text(p.get("Klucz"))
+                linked = (p.get("Kandydat") or {}).get("relation") or []
+                if page.get("archived") or page.get("in_trash") or not (key and linked):
+                    continue
+                rows[key] = {"cid": linked[0]["id"], "komentarz": _text(p.get("Komentarz"))}
+            rows.update((key, row) for key, row in _added.items() if key not in rows)
+            _comments_ii["by_key"], _comments_ii["at"] = rows, now
+        return list(_comments_ii["by_key"].values())
 
 
 def _live_rows(title):
@@ -314,10 +363,12 @@ def _anonymous(comments):
 
 
 def comments(user, cid):
-    """Every comment on the candidate except the session user's stage II one (it is in their text box): stage II
-    and stage I in one list, without author, time or stage"""
+    """Every comment on the candidate except the session user's stage II grade comment (it is in their text box):
+    added comments, stage II and stage I ones in one list, without author, time or stage"""
+    wanted = cid.replace("-", "")
     stage2 = [row["komentarz"] for row in _rows_ii() if row["cid"] == cid and row["uid"] != user.id]
-    return _anonymous(stage2 + _stage1_data()["comments"].get(cid, []))
+    added = [row["komentarz"] for row in _comment_rows() if row["cid"].replace("-", "") == wanted]
+    return _anonymous(stage2 + added + _stage1_data()["comments"].get(cid, []))
 
 
 def _stage1_data():

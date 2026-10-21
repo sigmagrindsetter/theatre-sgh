@@ -15,7 +15,7 @@ from panel import auth, notion_dbs, store
 from panel.main import app
 from shared.auth import NotionAuth
 
-KANDYDACI, OCENY, STAGE1 = "kandydaci-db", "oceny-ii-db", "oceny-db"
+KANDYDACI, OCENY, STAGE1, KOMENTARZE = "kandydaci-db", "oceny-ii-db", "oceny-db", "komentarze-ii-db"
 ALICE = "a0000000-0000-4000-8000-000000000001"  # reviewer
 BOB = "b0000000-0000-4000-8000-000000000002"    # another reviewer
 CAROL = "c0000000-0000-4000-8000-000000000003"  # active, has not graded
@@ -56,7 +56,7 @@ def notion(monkeypatch):
     fake = FakeNotion()
     monkeypatch.setattr(NotionAuth, "_client", fake)
     monkeypatch.setattr(notion_dbs, "_ids", {config.KANDYDACI_TITLE: KANDYDACI, config.OCENY_II_TITLE: OCENY,
-                                             config.OCENY_TITLE: STAGE1})
+                                             config.OCENY_TITLE: STAGE1, config.KOMENTARZE_II_TITLE: KOMENTARZE})
     monkeypatch.setattr(auth, "_members", {"at": None, "by_person": {}})
     for uid, name, active in [(ALICE, "Alicja", True), (BOB, "Bartek", True), (CAROL, "Celina", True),
                               (EVE, "Ewa", False)]:
@@ -98,7 +98,7 @@ def test_list_shows_candidates_sorted_with_own_status_and_progress(alice):
     assert "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg" in html
     assert f'href="/k/{X}"' in html
     assert "Aktorstwo, Scenografia" in html and "I SL" in html
-    assert "3/10" in html and html.count("brak oceny") == 2
+    assert html.count(" selected>") == 1 and '<option value="3" selected>3</option>' in html
     assert "<td>Alicja</td><td>1/3</td>" in html
     assert "<td>Bartek</td><td>1/3</td>" in html
     assert "<td>Celina</td><td>0/3</td>" in html
@@ -146,7 +146,7 @@ def test_privacy_another_reviewers_grade_shows_only_in_the_average_and_comment_w
     for path in ("/", f"/k/{X}", f"/k/{X}?uid={BOB}", f"/k/{X}?user={BOB}"):
         html = alice.get(path).text
         assert "<li>SEKRET-BARTKA</li>" in html
-        assert BOB not in html and "9/10" not in html
+        assert BOB not in html and "9/10" not in html and '<option value="9" selected>' not in html
         assert 'data-ocena="9" aria-pressed="true"' not in html
         if path == "/":
             assert "10:05" not in html and html.count("SEKRET-BARTKA") == 1
@@ -238,7 +238,7 @@ def test_first_save_creates_and_later_saves_update_despite_query_lag(alice, noti
     card = alice.get(f"/k/{Y}").text
     assert ">jednak bez oceny</textarea>" in card and 'data-ocena=""' in card
     assert alice.put(f"/api/oceny/{Y}", json={"ocena": 6, "komentarz": ""}, headers=SAME_ORIGIN).status_code == 200
-    assert "6/10" in alice.get("/").text
+    assert '<option value="6" selected>6</option>' in alice.get("/").text
     assert len(notion.calls_of("create")) == 1
     assert len([p for p in notion.rows[OCENY] if p["id"] == page_id]) == 1
 
@@ -293,7 +293,7 @@ def test_concurrent_saves_create_one_row(notion, monkeypatch):
 @pytest.mark.parametrize("body", [
     {"ocena": 7.5, "komentarz": ""}, {"ocena": "7", "komentarz": ""}, {"ocena": True, "komentarz": ""},
     {"ocena": 0, "komentarz": ""}, {"ocena": 11, "komentarz": ""}, {"ocena": 7, "komentarz": "x" * 2001},
-    {"ocena": 7}, {"komentarz": ""}, {"ocena": 7, "komentarz": None}, {"ocena": 7, "komentarz": 5},
+    {"komentarz": ""}, {"ocena": 7, "komentarz": None}, {"ocena": 7, "komentarz": 5},
 ])
 def test_put_rejects_invalid_bodies(alice, notion, body):
     response = alice.put(f"/api/oceny/{X}", json=body, headers=SAME_ORIGIN)
@@ -301,7 +301,7 @@ def test_put_rejects_invalid_bodies(alice, notion, body):
     assert notion.calls_of("update") == [] and notion.calls_of("create") == []
 
 
-@pytest.mark.parametrize("body", [{"ocena": None, "komentarz": ""}, {"ocena": 1, "komentarz": "x" * 2000},
+@pytest.mark.parametrize("body", [{"ocena": None, "komentarz": ""}, {"ocena": 7}, {"ocena": 1, "komentarz": "x" * 2000},
                                   {"ocena": 10, "komentarz": "ąę 🎭" * 400}])
 def test_put_accepts_valid_bodies(alice, body):
     assert alice.put(f"/api/oceny/{X}", json=body, headers=SAME_ORIGIN).status_code == 200
