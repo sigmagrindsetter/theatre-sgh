@@ -425,6 +425,14 @@ where they differ.
   "Komentarze" toggle (`<details>`, no script) with the same comments as the card. Averages only, never the
   number of grades (user, 2026-10-20). With few grades an average can still reveal a single grade;
   accepted with the request.
+- **Editing from the list** (user, 2026-10-21): each row has the reviewer's own stage II grade as a
+  select (1–10 or none), saved on change through `PUT /api/oceny/{id}` with `komentarz` left out, which
+  keeps the card's comment. The "Komentarze" toggle also holds a form that adds a new comment,
+  `POST /api/komentarze/{id}` `{komentarz}` (1–2000 characters after trimming), any number per reviewer
+  and candidate, add-only. Each is a row of `Komentarze II etap` under "Ściśle tajne" (`Nazwa`,
+  one-way `Kandydat`, `Oceniający`, `Komentarz`, `Czas`, `Klucz` = a random id per add, so a create
+  resent after a Notion 5xx counts once). They join the one anonymous list on card and list for every
+  reviewer, the author's own included. Same CSRF, JSON-only and rate-limit guard as grade saves.
 - **Groups**: from the interview sign-ups ("Zgłoszenia na rozmowę rekrutacyjną",
   `ZAPISY_DATABASE_ID`, workspace-level, connected to the integration): `Wybór grupy` per candidate,
   matched by name (case, Polish letters and word order ignored), else by the e-mail of `Auto-osoba`;
@@ -435,3 +443,5 @@ where they differ.
   report. The board reads the grades in Notion.
 - **Rollout**: branch → `panel-setup` run on the branch (adds `II etap`, creates `Oceny II etap`;
   harmless to the running stage I service) → tick the 18 → merge (deploys) only on the user's OK.
+  Editing from the list: branch → `panel-setup` on the branch (creates `Komentarze II etap`) → merge on
+  the user's OK.

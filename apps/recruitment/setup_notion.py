@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Notion schema of the review panel (REVIEW_PANEL_SPEC.md §4, §11): Kandydaci, Oceny and Oceny II etap
-under the board page
+Notion schema of the review panel (REVIEW_PANEL_SPEC.md §4, §11): Kandydaci, Oceny, Oceny II etap and
+Komentarze II etap under the board page
 Idempotent: creates missing databases, properties and board views; never deletes, renames or retypes
 anything except the one-time rename of the synced relation property on Kandydaci to "Oceny"
 """
@@ -38,6 +38,14 @@ OCENY_PROPERTIES = {
     "Ocena": {"number": {"format": "number"}},
     "Komentarz": {"rich_text": {}},
     "Ostatni zapis": {"date": {}},
+    "Klucz": {"rich_text": {}},
+}
+
+KOMENTARZE_PROPERTIES = {
+    "Nazwa": {"title": {}},
+    "Oceniający": {"people": {}},
+    "Komentarz": {"rich_text": {}},
+    "Czas": {"date": {}},
     "Klucz": {"rich_text": {}},
 }
 
@@ -191,11 +199,15 @@ class Setup:
         # one-way: a second synced relation and rollups on Kandydaci would only clutter it
         one_way = {RELATION: {"relation": {"database_id": kandydaci["id"], "type": "single_property",
                                            "single_property": {}}}}
-        oceny_ii = self.ensure(databases, config.OCENY_II_TITLE, {**OCENY_PROPERTIES, **one_way})
-        link = oceny_ii["properties"][RELATION]
-        if link["type"] != "relation" or plain(link["relation"]["database_id"]) != plain(kandydaci["id"]):
-            raise SetupError(f"{config.OCENY_II_TITLE}.{RELATION} must be a relation to Kandydaci {kandydaci['id']}")
-        return kandydaci["id"], oceny["id"], oceny_ii["id"]
+        stage2 = {}
+        for title, properties in [(config.OCENY_II_TITLE, OCENY_PROPERTIES),
+                                  (config.KOMENTARZE_II_TITLE, KOMENTARZE_PROPERTIES)]:
+            stage2[title] = self.ensure(databases, title, {**properties, **one_way})
+            link = stage2[title]["properties"][RELATION]
+            if link["type"] != "relation" or plain(link["relation"]["database_id"]) != plain(kandydaci["id"]):
+                raise SetupError(f"{title}.{RELATION} must be a relation to Kandydaci {kandydaci['id']}")
+        return {config.KANDYDACI_TITLE: kandydaci["id"], config.OCENY_TITLE: oceny["id"],
+                **{title: database["id"] for title, database in stage2.items()}}
 
     def ensure_views(self, database, title):
         """Create the board views missing by name, as tables sorted descending, grouped where given."""
@@ -223,7 +235,7 @@ def main():
         check_members(client)
         check_zapisy(client)
         setup = Setup(client, views_client())
-        kandydaci_id, oceny_id, oceny_ii_id = setup.run()
+        ids = setup.run()
     except (SetupError, APIResponseError) as error:
         print(f"✗ {error}")
         return 1
@@ -231,9 +243,8 @@ def main():
         print(f"  + {change}")
     if not setup.changes:
         print("Nothing changed: schema already up to date")
-    print(f"{config.KANDYDACI_TITLE}: {kandydaci_id}")
-    print(f"{config.OCENY_TITLE}: {oceny_id}")
-    print(f"{config.OCENY_II_TITLE}: {oceny_ii_id}")
+    for title, database_id in ids.items():
+        print(f"{title}: {database_id}")
     return 0
 
 

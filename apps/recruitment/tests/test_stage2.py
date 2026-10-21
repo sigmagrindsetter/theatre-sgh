@@ -81,7 +81,7 @@ def test_list_shows_both_averages_without_counts(alice, notion):
     row = row[:row.index("</tr>")]
     assert "<td>6,00</td>\n      <td>6,50</td>" in row
     assert "(2)" not in html and "liczba ocen" not in html
-    assert "8/10" not in html and "5/10" not in html
+    assert "8/10" not in html and "5/10" not in html and row.count(" selected>") == 1  # Alicja's own 3
 
 
 def test_candidates_are_grouped_by_interview_signup(alice, notion):
@@ -138,5 +138,6 @@ def test_list_toggles_comments_without_author_and_no_single_grade(alice, notion)
     candidates = html.split("Postęp oceniania")[0]  # the progress table names reviewers, with counts only
     assert "Bartek" not in candidates and "Celina" not in candidates
     assert "9/10" not in html and "10/10" not in html and "4/10" not in html
+    assert html.count(" selected>") == 1  # only Alicja's own 3
     z = html[html.index(f'href="/k/{Z}">Dawid Dyskowy'):]
     assert "Brak komentarzy" in z[:z.index("</tr>", z.index("</tr>") + 1)]

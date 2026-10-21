@@ -33,3 +33,7 @@ td.raw { overflow-wrap: anywhere; }
 tr.candidate td { border-bottom: 0; }
 tr.comments-row td { padding-top: 0; }
 tr.comments-row summary { cursor: pointer; color: var(--accent); }
+select.ocena { font: inherit; padding: .2rem; border: 1px solid var(--line); border-radius: 6px; }
+.saved { display: block; min-height: 1.25em; font-size: .875rem; color: var(--muted); }
+.saved.error { color: var(--accent); font-weight: 600; }
+form.add-comment textarea { width: 100%; font: inherit; padding: .5rem; border: 1px solid var(--line); border-radius: 6px; }

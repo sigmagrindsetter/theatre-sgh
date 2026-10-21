@@ -11,7 +11,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, StringConstraints, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from panel import auth, ingest, ratelimit, store
@@ -32,7 +32,7 @@ SECURITY_HEADERS = {
 ERRORS = {404: ("Nie znaleziono", "Nie ma takiej strony ani takiego kandydata."),
           500: ("Błąd serwera", "Coś poszło nie tak. Spróbuj ponownie za chwilę.")}
 TOO_MANY = "Za dużo zapisów naraz. Spróbuj ponownie za chwilę."
-MAX_GRADE_BODY = 64 * 1024  # a 2000-character comment is at most ~24 KiB of JSON
+MAX_BODY = 64 * 1024  # a 2000-character comment is at most ~24 KiB of JSON
 
 
 class PathOnly(logging.Filter):
@@ -147,11 +147,16 @@ def card(request: Request, cid: str, user: User = Depends(require_reviewer)):
 class Grade(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ocena: Annotated[StrictInt, Field(ge=1, le=10)] | None
-    komentarz: Annotated[StrictStr, Field(max_length=2000)]
+    komentarz: Annotated[StrictStr, Field(max_length=2000)] = None  # left out by the list: kept as it is; null is a 422
+
+
+class Comment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    komentarz: Annotated[StrictStr, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
 def write_guard(request: Request, cid: str, user: User = Depends(require_reviewer)) -> User:
-    """CSRF, content type and rate limit of a grade save, checked before the body is validated."""
+    """CSRF, content type and rate limit of a grade save or a comment, checked before the body is validated."""
     if not auth.same_origin(request):
         raise HTTPException(403, "Brak dostępu")
     if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
@@ -162,23 +167,39 @@ def write_guard(request: Request, cid: str, user: User = Depends(require_reviewe
     return user
 
 
-async def grade_body(request: Request, user: User = Depends(write_guard)) -> Grade:
-    """The grade, read only after write_guard and capped: a body parameter is parsed in full before any check."""
+async def _body(request, model):
+    """The body, read only after write_guard and capped: a body parameter is parsed in full before any check."""
     body = b""
     async for chunk in request.stream():
         body += chunk
-        if len(body) > MAX_GRADE_BODY:
+        if len(body) > MAX_BODY:
             raise HTTPException(413, "Za długi zapis")
     try:
-        return Grade.model_validate_json(body)
+        return model.model_validate_json(body)
     except ValidationError as error:
         raise RequestValidationError(error.errors(include_url=False, include_input=False)) from None
 
 
-@app.put("/api/oceny/{cid}")
-def put_grade(cid: str, grade: Grade = Depends(grade_body), user: User = Depends(write_guard)):
+async def grade_body(request: Request, user: User = Depends(write_guard)) -> Grade:
+    return await _body(request, Grade)
+
+
+async def comment_body(request: Request, user: User = Depends(write_guard)) -> Comment:
+    return await _body(request, Comment)
+
+
+def _invited(cid):
     candidate = store.candidate(cid)
     if candidate is None:
         raise HTTPException(404, "Nie ma takiego kandydata")
-    return {"saved_at": store.save_grade(user, candidate["id"], grade.ocena, grade.komentarz)}
+    return candidate
 
+
+@app.put("/api/oceny/{cid}")
+def put_grade(cid: str, grade: Grade = Depends(grade_body), user: User = Depends(write_guard)):
+    return {"saved_at": store.save_grade(user, _invited(cid)["id"], grade.ocena, grade.komentarz)}
+
+
+@app.post("/api/komentarze/{cid}")
+def post_comment(cid: str, comment: Comment = Depends(comment_body), user: User = Depends(write_guard)):
+    return {"saved_at": store.add_comment(user, _invited(cid)["id"], comment.komentarz)}
