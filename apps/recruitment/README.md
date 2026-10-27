@@ -67,7 +67,7 @@ http://localhost:8000/internal/ingest` imports the Sheet into the scratch `Kandy
 ```
 
 They run against an in-memory Notion (`tests/fake_notion.py`) with dummy secrets and never reach
-Notion or Google. `panel-deploy` runs them on every pull request and push.
+Notion or Google. `panel-deploy` runs them on every pull request and every run.
 
 ## Deployment
 
@@ -75,11 +75,12 @@ Nothing deploys from a laptop: no `gcloud run deploy`, `gcloud builds submit`, `
 Secret Manager writes or production schema changes from a workstation. The only identity that can
 deploy is `panel-deployer`, reachable only from GitHub Actions on `main`.
 
-- `panel-deploy.yml`: on push to `main` touching `apps/recruitment/**`, `shared/**` or the workflow (or run by hand): tests, image checks, build and push, a check that every secret has a version, deploy, the Scheduler job `panel-ingest`, a `/health` smoke test (Cloud Run's front end answers `/healthz` itself; the container check uses it locally). Pull requests run only the tests and image checks.
+- `panel-deploy.yml` (by hand, on `main`): tests, image checks, build and push, a check that every secret has a version, deploy, the Scheduler job `panel-ingest`, a `/health` smoke test (Cloud Run's front end answers `/healthz` itself; the container check uses it locally). A merge does not deploy. Pull requests run only the tests and image checks.
+- `panel-shutdown.yml` (by hand): deletes the Scheduler job `panel-ingest`, then the service. Notion data, images, secrets and WIF stay, so `panel-deploy` brings the panel back on the same URL.
 - `panel-secrets.yml` (by hand): copies the five GitHub secrets into Secret Manager and destroys older versions.
 - `panel-setup.yml` (by hand): checks that the interview sign-ups are readable, creates or completes the Notion schema under the production board page (`Oceny II etap`, `Komentarze II etap` and the `II etap` checkbox included), and the board's stage I views "wg oceniającego", "wg kandydata" (Oceny) and "ranking" (Kandydaci). A view is created only when none has its name, so the board may change or delete views in Notion; a deleted one comes back on the next run.
 
-First deploy: merge → `panel-deploy` stops at the secrets check → run `panel-secrets` → re-run `panel-deploy`.
+First deploy: run `panel-deploy` → it stops at the secrets check → run `panel-secrets` → re-run `panel-deploy`.
 
 ## Operations
 
@@ -92,7 +93,7 @@ First deploy: merge → `panel-deploy` stops at the secrets check → run `panel
 - **Removing a candidate** (withdrawn, or a second e-mail of the same person): delete their row in the Sheet first, then delete the page in Kandydaci. Ingest is create-only and re-creates, without grades, any candidate whose Sheet row is still there.
 - **Who is in stage II**: the `II etap` checkbox in Kandydaci; untick it to take a candidate off the panel (their grades stay in Notion).
 - **Groups**: a sign-up matches a candidate by name (case, Polish letters and word order ignored), else by the e-mail of the Notion account that made it. Sign-ups matching nobody are listed under "Zapisy bez kandydata" on the panel's main page; fix the name in the sign-up row.
-- **After the window**: the board reads the grades and comments in Notion (`Oceny II etap`, `Komentarze II etap`), sets `PANEL_MIN_INSTANCES=0` and runs `panel-deploy`.
+- **After the window**: the board reads the grades and comments in Notion (`Oceny II etap`, `Komentarze II etap`) and runs `panel-shutdown`. Then delete the Apps Script trigger (Triggers → `onFormSubmit` → Delete trigger): with the service gone, every form submission fails with HTTP 404 and Apps Script e-mails the owner. To bring the panel back, run `panel-deploy` and reinstall the trigger ([`apps_script/README.md`](apps_script/README.md)).
 
 ## Privacy model
 
