@@ -1,15 +1,10 @@
 name: Panel deploy
 
 # Recruitment review panel (apps/recruitment/REVIEW_PANEL_SPEC.md §6.3): tests and image check on
-# every run; build, push and deploy to Cloud Run only from main. GCP access via WIF, no key files.
+# every run; build, push and deploy to Cloud Run only when run by hand on main. No push trigger:
+# a merge touching shared/** would otherwise bring a shut-down panel back. GCP access via WIF.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/recruitment/**'
-      - 'shared/**'
-      - '.github/workflows/panel-deploy.yml'
   pull_request:
     paths:
       - 'apps/recruitment/**'
@@ -70,7 +65,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read

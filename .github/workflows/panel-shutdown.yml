@@ -1,0 +1,61 @@
+name: Panel shutdown
+
+# Takes the recruitment panel down after the window (apps/recruitment/README.md, "After the window"):
+# deletes the Scheduler job panel-ingest, then the Cloud Run service. Notion data, images, secrets
+# and WIF stay, so running panel-deploy by hand brings the panel back on the same URL.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: europe-west1
+  SERVICE: panel-rekrutacja
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  shutdown:
+    runs-on: ubuntu-latest
+    # Same group as the deploy job, so a shutdown never interleaves with a deploy
+    concurrency:
+      group: panel-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: theatre-sgh
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      # list, not describe: a permission error fails the step instead of reading as "already gone"
+      - name: Delete Cloud Scheduler job panel-ingest
+        run: |
+          found="$(gcloud scheduler jobs list --location="$REGION" --filter='name~/jobs/panel-ingest$' --format='value(name)')"
+          if [ -n "$found" ]; then
+            gcloud scheduler jobs delete panel-ingest --location="$REGION" --quiet
+          else
+            echo "panel-ingest is already gone"
+          fi
+
+      - name: Delete Cloud Run service
+        run: |
+          found="$(gcloud run services list --region="$REGION" --filter="metadata.name=$SERVICE" --format='value(metadata.name)')"
+          if [ -n "$found" ]; then
+            gcloud run services delete "$SERVICE" --region="$REGION" --quiet
+          else
+            echo "$SERVICE is already gone"
+          fi
